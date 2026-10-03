@@ -52,8 +52,8 @@ jobs:
         tar --no-overwrite-dir -xf llama-3.tar.gz -C /tmp/
         tar --no-overwrite-dir -xf llama-4.tar.gz -C /tmp/
         rm llama-2.zip
-        rm llama-3.zip
-        rm llama-4.zip
+        rm llama-3.tar.gz
+        rm llama-4.tar.gz
         
     - name: Download Dependencies
       id: dl
