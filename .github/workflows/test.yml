@@ -44,8 +44,8 @@ jobs:
                 # wget -q https://github.com/cora4/ik_llama.cpp/releases/download/zen4-19-14370/llama-latest-bin-ubuntu-zen4.zip
             fi
         fi
-        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/tgl-1-23066/llama-latest-bin-ubuntu-tgl.zip
-        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/tgl-2-2918/llama-latest-bin-ubuntu-tgl.zip  -O llama-2.zip
+        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/icl-2-503/llama-latest-bin-ubuntu-icl.zip
+        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/icl-1-32243/llama-latest-bin-ubuntu-icl.zip  -O llama-2.zip
         wget -q https://github.com/ggml-org/llama.cpp/releases/download/b11194/llama-b11194-bin-ubuntu-x64.tar.gz -O llama-3.tar.gz
         wget -q https://github.com/ggml-org/llama.cpp/releases/download/b11195/llama-b11195-bin-ubuntu-x64.tar.gz -O llama-4.tar.gz
         unzip -qo llama-2.zip -d /tmp/2/
@@ -245,19 +245,19 @@ jobs:
 #        echo "Benchmarking Quantised Model (Latest):"
 #        /tmp/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_KS_R16.gguf
 
+    - name: Benchmark Models (latest) IQ4_XS (Ver 4.0)
+      run: |
+        echo "Benchmarking Quantised Model (Latest):"
+        rm /tmp/llama-b11195/libggml-cpu-zen4.so
+        rm /tmp/llama-b11195/libggml-cpu-sapphirerapids.so
+        /tmp/llama-b11195/llama-bench -m /tmp/qwen3-4B-IQ4_XS.gguf
+
     - name: Benchmark Models (latest) IQ4_XS (Ver 3.0)
       run: |
         echo "Benchmarking Quantised Model (Latest):"
         rm /tmp/llama-b11194/libggml-cpu-zen4.so
         rm /tmp/llama-b11194/libggml-cpu-sapphirerapids.so
         /tmp/llama-b11194/llama-bench -m /tmp/qwen3-4B-IQ4_XS.gguf
-
-    - name: Benchmark Models (latest) IQ4_XS (Ver 4.0)
-      run: |
-        echo "Benchmarking Quantised Model (Latest):"
-        rm /tmp/llama-b11195/libggml-cpu-zen4.so
-        rm /tmp/llama-b11194/libggml-cpu-sapphirerapids.so
-        /tmp/llama-b11195/llama-bench -m /tmp/qwen3-4B-IQ4_XS.gguf
 
     - name: Benchmark Models (latest) IQ4_XS
       run: |
