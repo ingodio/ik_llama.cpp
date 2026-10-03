@@ -245,6 +245,20 @@ jobs:
 #        echo "Benchmarking Quantised Model (Latest):"
 #        /tmp/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_KS_R16.gguf
 
+    - name: Benchmark Models (latest) IQ4_XS (Ver 3.0)
+      run: |
+        echo "Benchmarking Quantised Model (Latest):"
+        rm /tmp/llama-b11194/libggml-cpu-cpu-zen4.so
+        rm /tmp/llama-b11194/libggml-cpu-sapphirerapids.so
+        /tmp/llama-b11194/llama-bench -np 1 -m /tmp/qwen3-4B-IQ4_XS.gguf
+
+    - name: Benchmark Models (latest) IQ4_XS (Ver 4.0)
+      run: |
+        echo "Benchmarking Quantised Model (Latest):"
+        rm /tmp/llama-b11195/libggml-cpu-libggml-cpu-zen4.so
+        rm /tmp/llama-b11194/libggml-cpu-sapphirerapids.so
+        /tmp/llama-b11195/llama-bench -np 1 -m /tmp/qwen3-4B-IQ4_XS.gguf
+
     - name: Benchmark Models (latest) IQ4_XS
       run: |
         echo "Benchmarking Quantised Model (Latest):"
@@ -259,28 +273,3 @@ jobs:
       run: |
         echo "Benchmarking Quantised Model (Latest):"
         /tmp/2/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_XS.gguf
-        
-    - name: Benchmark Models (Prism) IQ4_XS
-      run: |
-        echo "Benchmarking Quantised Model (Prism):"
-        /tmp/llama-prism-b9596-9fcaed7/llama-bench -m /tmp/qwen3-4B-IQ4_XS.gguf
-        rm /tmp/llama-prism-b9596-9fcaed7/libggml-cpu-zen4.so
-        rm /tmp/llama-prism-b9596-9fcaed7/libggml-cpu-sapphirerapids.so
-        if grep -q "avx512_bf16" /proc/cpuinfo; then
-          echo Without SPR
-          /tmp/llama-prism-b9596-9fcaed7/llama-bench -m /tmp/qwen3-4B-IQ4_XS.gguf
-        fi
-
-    - name: Benchmark Models (latest) IQ4_XS (Ver 3.0)
-      run: |
-        echo "Benchmarking Quantised Model (Latest):"
-        rm /tmp/llama-b11194/libggml-cpu-libggml-cpu-zen4.so
-        rm /tmp/llama-b11194/libggml-cpu-sapphirerapids.so
-        /tmp/llama-b11194/llama-bench -np 1 -m /tmp/qwen3-4B-IQ4_XS.gguf
-
-    - name: Benchmark Models (latest) IQ4_XS (Ver 4.0)
-      run: |
-        echo "Benchmarking Quantised Model (Latest):"
-        rm /tmp/llama-b11195/libggml-cpu-libggml-cpu-zen4.so
-        rm /tmp/llama-b11194/libggml-cpu-sapphirerapids.so
-        /tmp/llama-b11195/llama-bench -np 1 -m /tmp/qwen3-4B-IQ4_XS.gguf
