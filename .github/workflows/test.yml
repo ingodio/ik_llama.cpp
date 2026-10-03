@@ -250,14 +250,14 @@ jobs:
         echo "Benchmarking Quantised Model (Latest):"
         rm /tmp/llama-b11194/libggml-cpu-zen4.so
         rm /tmp/llama-b11194/libggml-cpu-sapphirerapids.so
-        /tmp/llama-b11194/llama-bench -np 1 -m /tmp/qwen3-4B-IQ4_XS.gguf
+        /tmp/llama-b11194/llama-bench -m /tmp/qwen3-4B-IQ4_XS.gguf
 
     - name: Benchmark Models (latest) IQ4_XS (Ver 4.0)
       run: |
         echo "Benchmarking Quantised Model (Latest):"
         rm /tmp/llama-b11195/libggml-cpu-zen4.so
         rm /tmp/llama-b11194/libggml-cpu-sapphirerapids.so
-        /tmp/llama-b11195/llama-bench -np 1 -m /tmp/qwen3-4B-IQ4_XS.gguf
+        /tmp/llama-b11195/llama-bench -m /tmp/qwen3-4B-IQ4_XS.gguf
 
     - name: Benchmark Models (latest) IQ4_XS
       run: |
