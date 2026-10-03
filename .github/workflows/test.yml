@@ -248,7 +248,7 @@ jobs:
     - name: Benchmark Models (latest) IQ4_XS (Ver 3.0)
       run: |
         echo "Benchmarking Quantised Model (Latest):"
-        rm /tmp/llama-b11194/libggml-cpu-cpu-zen4.so
+        rm /tmp/llama-b11194/libggml-cpu-zen4.so
         rm /tmp/llama-b11194/libggml-cpu-sapphirerapids.so
         /tmp/llama-b11194/llama-bench -np 1 -m /tmp/qwen3-4B-IQ4_XS.gguf
 
