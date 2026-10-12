@@ -246,6 +246,7 @@ extern "C" {
         LLAMA_FTYPE_MOSTLY_IQ5_K_R4      = 341, // except 1d tensors
         LLAMA_FTYPE_MOSTLY_IQ4_KS_R4     = 345, // except 1d tensors
         LLAMA_FTYPE_MOSTLY_IQ4_KS_R16    = 346, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_IQ3_KS_R16    = 347, // except 1d tensors (16-row interleaved iq3ks-class codebook 3-bit)
         LLAMA_FTYPE_MOSTLY_IQ5_KS_R4     = 350, // except 1d tensors
         LLAMA_FTYPE_MOSTLY_MXFP4_R8      = 351, // except 1d tensors
         LLAMA_FTYPE_MOSTLY_Q8_KV_R8      = 398, // except 1d tensors
@@ -439,7 +440,7 @@ extern "C" {
         bool dry_run;       // skip loading tensors
         bool flash_attn;
         bool defer_experts;    // defer expert mmap residency to speed up model loading (Linux only)
-        bool defer_ple;        // keep the per-layer token embedding on the file instead of resident in memory (Linux and Windows only)
+        bool defer_ple;        // keep sparse tables (PLE, engram) on the file instead of resident in memory (Linux and Windows only)
         bool swa_compress;     // must match llama_context_params::swa_compress; the fit also assumes that context's n_ubatch
     };
 

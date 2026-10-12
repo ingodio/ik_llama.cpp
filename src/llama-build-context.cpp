@@ -1616,7 +1616,7 @@ llm_expert_gating_func_type   gating_op,
 
     if (gating_op == LLM_EXPERT_GATING_FUNC_TYPE_SOFTMAX_WEIGHT) {
         weights = ggml_reshape_2d(ctx, weights, n_expert_used, n_tokens);
-        weights = ggml_soft_max(ctx, weights); // [n_expert_used, n_tokens]
+        weights = ggml_soft_max_inplace(ctx, weights); // [n_expert_used, n_tokens]
         weights = ggml_reshape_3d(ctx, weights, 1, n_expert_used, n_tokens);
         cb(weights, "ffn_moe_weights_softmax", il);
     }
@@ -2816,6 +2816,7 @@ ggml_cgraph * llm_build_context::llama_build_graph(
 
     switch (model.arch) {
         case LLM_ARCH_LLAMA:
+        case LLM_ARCH_NANBEIGE:
         case LLM_ARCH_LLAMA4:
         case LLM_ARCH_GRANITE:
         case LLM_ARCH_GRANITE_MOE:
