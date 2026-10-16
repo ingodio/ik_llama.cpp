@@ -17,6 +17,7 @@
 #include "chat.h"
 #include "json-schema-to-grammar.h"
 #include <algorithm>
+#include <charconv>
 #include <cerrno>
 #include <cinttypes>
 #include <climits>
@@ -29,6 +30,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -917,6 +919,10 @@ bool gpt_params_parse_ex(int argc, char ** argv, gpt_params & params) {
         if (invalid_param) {
             throw std::invalid_argument("error: invalid parameter for argument: " + arg);
         }
+    }
+
+    if (params.fit && params.moe_cache_size > 0) {
+        throw std::invalid_argument("error: --fit cannot be combined with --moe-cache-mib because fit does not reserve context-time cache memory");
     }
 
     if (params.prompt_cache_all && (params.interactive || params.interactive_first)) {
@@ -2383,6 +2389,21 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
         //}
         return true;
     }
+    if (arg == "--moe-cache-mib") {
+        CHECK_ARG
+        uint64_t mib = 0;
+        const char * value = argv[i];
+        const char * end = value + std::strlen(value);
+        const auto parsed = std::from_chars(value, end, mib);
+        if (parsed.ec != std::errc() || parsed.ptr != end || value[0] == '-' ||
+                mib > std::numeric_limits<size_t>::max() / (1024*1024)) {
+            fprintf(stderr, "error: Invalid value for --moe-cache-mib: %s (must be non-negative and fit in MiB)\n", argv[i]);
+            invalid_param = true;
+            return true;
+        }
+        params.moe_cache_size = (size_t) mib * 1024 * 1024;
+        return true;
+    }
     if (arg == "--fit") {
         params.fit = true;
         return true;
@@ -3550,9 +3571,9 @@ void gpt_params_print_usage(int /*argc*/, char ** argv, const gpt_params & param
     options.push_back({ "*",           "       --no-context-shift",     "disable context-shift." });
     options.push_back({ "*",           "--context-shift (auto|on|off|0|1)", "set context-shift (default: %s)", params.ctx_shift ? "on" : "off" });
     options.push_back({ "backend" });
-    options.push_back({ "*",           "       --rpc SERVERS",          "comma separated list of RPC servers" });
-    options.push_back({ "*",           "-cuda, --cuda-params",          "comma separate list of cuda parameters" });
-    options.push_back({ "*",           "-draft, --draft-params",        "comma separate list of draft model parameters (--cpu-affinity pins the draft to E-cores on Intel hybrid CPUs, -cr LIST picks CPUs)" });
+    options.push_back({ "*",           "       --rpc SERVERS",          "comma-separated list of RPC servers" });
+    options.push_back({ "*",           "-cuda, --cuda-params",          "comma-separated list of cuda parameters" });
+    options.push_back({ "*",           "-draft, --draft-params",        "comma-separated list of draft model parameters (--cpu-affinity pins the draft to E-cores on Intel hybrid CPUs, -cr LIST picks CPUs)" });
     if (llama_supports_mlock()) {
         options.push_back({ "*",           "       --mlock",                "force system to keep model in RAM rather than swapping or compressing" });
     }
@@ -3562,6 +3583,7 @@ void gpt_params_print_usage(int /*argc*/, char ** argv, const gpt_params & param
     options.push_back({ "*",           "-rtr,   --run-time-repack",      "repack tensors if interleaved variant is available"});
     options.push_back({ "*",           "-cmoe,  --cpu-moe",              "keep all MoE weights in CPU memory"});
     options.push_back({ "*",           "-ncmoe, --n-cpu-moe N",          "keep MoE weights of the first N layers in CPU memory"});
+    options.push_back({ "*",           "       --moe-cache-mib N",       "Total GPU cache budget in MiB for CPU-resident MoE experts, split across GPUs (default: 0, disabled)"});
     options.push_back({ "*",           "-thp,   --transparent-huge-pages", "use transparent huge pages on Linux"});
     options.push_back({ "*",           "-dexp,  --defer-experts",        "defer expert mmap residency on Linux to reduce model load time"});
     options.push_back({ "*",           "-dple,  --defer-ple",            "keep sparse tables (PLE, engram) on the file instead of resident in memory (Linux, Windows)"});
@@ -3630,6 +3652,7 @@ void gpt_params_print_usage(int /*argc*/, char ** argv, const gpt_params & param
     options.push_back({ "*",           "-hfr,  --hf-repo REPO",         "Hugging Face model repository (default: unused)" });
     options.push_back({ "*",           "-hff,  --hf-file FILE",         "Hugging Face model file (default: unused)" });
     options.push_back({ "*",           "-hft,  --hf-token TOKEN",       "Hugging Face access token (default: value from HF_TOKEN environment variable)" });
+    options.push_back({ "*",           "-a,    --alias STRING",         "model alias (default: unknown)" });
     options.push_back({ "*", "--spec-ckpt-mode MODE",         "checkpoint strategy for speculative decoding\n"
                                                               "  auto         auto-select: per-step if CUDA full-GPU, gpu-fallback otherwise (default)\n"
                                                               "  per-step     save architecture state per draft step; no re-decode on rejection\n"
@@ -4478,11 +4501,9 @@ struct llama_init_result llama_init_from_gpt_params(gpt_params & params) {
         // some models (e.g. T5) don't have a BOS token
         if (bos != -1) {
             tmp.push_back(bos);
+        } else {
+            tmp.push_back(eos);
         }
-	else
-	{
-	    tmp.push_back(eos);
-	}
         if (llama_model_has_encoder(model)) {
             llama_encode(lctx, llama_batch_get_one(tmp.data(), tmp.size(), 0, 0));
             llama_token decoder_start_token_id = llama_model_decoder_start_token(model);
@@ -4668,6 +4689,7 @@ struct llama_context_params common_context_params_to_llama(const gpt_params & pa
     auto [n_batch, n_ubatch] = get_batch_ubatch(params);
 
     cparams.n_ctx             = params.n_ctx;
+    cparams.moe_cache_size    = params.moe_cache_size;
     cparams.n_seq_max         = params.n_parallel;
     cparams.n_batch           = n_batch;
     cparams.n_ubatch          = n_ubatch;

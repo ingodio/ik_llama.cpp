@@ -1196,7 +1196,7 @@ void llama_model_loader::load_data_for(struct ggml_tensor * cur) const {
     }
 }
 
-// Returns false if cancelled by progress_callback
+// Returns false if canceled by progress_callback
 bool llama_model_loader::load_all_data(
             struct ggml_context * ctx,
             [[maybe_unused]] llama_model * model,
@@ -1241,7 +1241,7 @@ bool llama_model_loader::load_all_data(
             }
         }
 
-        // If the cuda backend is active create pinned memory buffers and events for synchronisation.
+        // If the cuda backend is active create pinned memory buffers and events for synchronization.
         if (cuda_backend) {
             for (size_t idx = 0; idx < (size_t)n_workers; ++idx) {
                 host_buffers.emplace_back(ggml_backend_buft_alloc_buffer(llama_default_buffer_type_cpu(true), buffer_size));
@@ -1275,7 +1275,20 @@ bool llama_model_loader::load_all_data(
 
         // mmap. Serialized.
         if (use_mmap) {
+            // Stream device tensors from disk: Windows has no per-range discard for READONLY views,
+            // and on integrated GPUs the upload from the mapping is slow.
+#if defined(_WIN32)
+            const bool stream_from_file = cur->buffer != nullptr && !ggml_backend_buffer_is_host(cur->buffer);
             std::lock_guard<std::mutex> lock(load_mutex);
+#else
+            const bool stream_from_file = cur->buffer != nullptr &&
+                std::find(integrated_bufts.begin(), integrated_bufts.end(), ggml_backend_buffer_get_type(cur->buffer)) != integrated_bufts.end();
+            // Integrated GPU tensors load without the lock. Each worker has its own file and read buffer, and the copy uses cudaStreamPerThread.
+            std::unique_lock<std::mutex> lock(load_mutex, std::defer_lock);
+            if (!stream_from_file) {
+                lock.lock();
+            }
+#endif
             // Owned buffers streamed from the file: repackables under -rtr, everything
             // not deferred under explicit --no-mmap; deferred tables stay aliased.
             if (defer_ple && !ple_tensor_index.empty() && lmlocks == nullptr &&
@@ -1306,9 +1319,7 @@ bool llama_model_loader::load_all_data(
                     return n_size;
                 }
             }
-#if defined(_WIN32)
-            // No per-range discard for READONLY views: stream device tensors from disk.
-            if (cur->buffer != nullptr && !ggml_backend_buffer_is_host(cur->buffer)) {
+            if (stream_from_file) {
                 auto & read_buf = read_bufs[thread_idx];
                 read_buf.resize(n_size);
                 file->seek(weight->offs, SEEK_SET);
@@ -1319,7 +1330,6 @@ bool llama_model_loader::load_all_data(
                 }
                 return n_size;
             }
-#endif
             const auto & mapping = mappings.at(weight->idx);
             ggml_backend_buffer_t buf_mmap = nullptr;
             if (bufs_mmap.count(weight->idx)) {

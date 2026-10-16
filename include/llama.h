@@ -476,6 +476,7 @@ extern "C" {
 
         enum ggml_type type_k; // data type for K cache [EXPERIMENTAL]
         enum ggml_type type_v; // data type for V cache [EXPERIMENTAL]
+        size_t moe_cache_size; // total device-cache budget for host-resident MoE experts, split across GPUs [EXPERIMENTAL]
         enum ggml_type idx_type_k; // data type for indexer K cache [EXPERIMENTAL]
         enum ggml_type type_reduce; // data type for reduce operations
         enum ggml_type type_graph_attn; // flash-attn precision under -sm graph
@@ -562,7 +563,11 @@ extern "C" {
         bool dry_run;                        //
         bool partial_requant;                // quantize only missing split files in the split quantized .gguf destination directory
         size_t slab_size;                    // tensors larger than this many bytes of f32 are processed in slabs of up to this size (at least one slice or row group), 0 = never
-        bool cuda_quantize;                  // quantize IQ4_KT and IQ3_KT on the first CUDA device
+        bool cuda_quantize;                  // quantize IQ4_KT, IQ3_KT, IQ3_KS, IQ4_KS, IQ4_KS_R4, IQ4_KS_R16, IQ5_KS, and IQ5_KS_R4 on a CUDA device
+        int  cuda_quantize_device;           // CUDA device index used by --cuda-quantize (default 0)
+        int  cuda_quantize_n_devices;        // row-split device count, 0 = off
+        int  cuda_quantize_devices[16];      // row-split ordinals (-dev CUDA0,CUDA1,CUDA2)
+        float cuda_quantize_split[16];       // row-split shares, sum 1 (-ts 3,3,2)
         void * imatrix;                      // pointer to importance matrix data
         void * kv_overrides;                 // pointer to vector containing overrides
         void * custom_quants;                // pointer to vector containing custom quantization rules
@@ -892,6 +897,9 @@ extern "C" {
 
     // Save the current recurrent state as a speculative checkpoint.
     LLAMA_API bool llama_spec_ckpt_save(struct llama_context * ctx, llama_seq_id seq_id);
+
+    // Save the current recurrent state as a rewind checkpoint
+    LLAMA_API bool llama_rewind_ckpt_save(struct llama_context * ctx, llama_seq_id seq_id, int max_tokens);
 
     // Restore the recurrent state after speculative decode.
     LLAMA_API bool llama_spec_ckpt_restore(struct llama_context * ctx, llama_seq_id seq_id,
