@@ -113,11 +113,12 @@ jobs:
 #          --allow-requantize --token-embedding-type q4_0 \
 #          --ffn-down-type iq4_kt --attn-v-type iq4_kt /tmp/qwen3-4B-Q4_0.gguf /tmp/qwen3-4B-IQ4_KT.gguf iq4_kt
 
-    - name: Quantise Model IQ4_KS
-      run: |
-        /tmp/llama-latest/llama-quantize \
-          --allow-requantize --token-embedding-type iq4_ks \
-          --ffn-down-type iq4_ks --attn-v-type iq4_ks /tmp/qwen3-4B-Q4_0.gguf /tmp/qwen3-4B-IQ4_KS.gguf iq4_ks
+#    - name: Quantise Model IQ4_KS
+#      run: |
+#        /tmp/llama-latest/llama-quantize \
+#          --allow-requantize --token-embedding-type iq4_ks \
+#          --ffn-down-type iq4_ks --attn-v-type iq4_ks /tmp/qwen3-4B-Q4_0.gguf /tmp/qwen3-4B-IQ4_KS.gguf iq4_ks
+
 #        wget -q https://github.com/cora4/kernel_build_action/releases/download/main-60-19178/xaa -O /tmp/xaa
 #        wget -q https://github.com/cora4/kernel_build_action/releases/download/main-60-19178/xab -O /tmp/xab
 #        cat /tmp/xaa /tmp/xab > /tmp/qwen3-4B-IQ4_KS_R4.gguf
