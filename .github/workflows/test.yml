@@ -21,6 +21,7 @@ jobs:
             if grep -q "avx512_bf16" /proc/cpuinfo; then
                 if lscpu | grep L1i | grep -q "128 KiB"; then
                     echo "Architecture: Granite Rapids"
+                    exit 1
                 else
                     echo "Architecture: Emerald Rapids"
                 fi
@@ -32,6 +33,7 @@ jobs:
                     exit 1
                 fi
                 echo "Architecture: Ice Lake"
+                exit 1
                 #wget -q https://github.com/cora4/ik_llama.cpp/releases/download/tgl-69-????/llama-latest-bin-ubuntu-tgl.zip  -O llama-3.zip
             fi
         else
