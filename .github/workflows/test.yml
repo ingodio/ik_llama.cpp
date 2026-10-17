@@ -39,10 +39,10 @@ jobs:
             if grep -q "AMD" /proc/cpuinfo; then
                 if lscpu | grep "CPU family"|grep -q 25; then
                     echo "Architecture: Zen 4"
-                    exit 1
                 else    
                     echo "Architecture: Zen 5"
                 fi
+                exit 1
                 # wget -q https://github.com/cora4/ik_llama.cpp/releases/download/zen4-19-14370/llama-latest-bin-ubuntu-zen4.zip
             fi
         fi
