@@ -47,8 +47,8 @@ jobs:
         #wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/icl-2-503/llama-latest-bin-ubuntu-icl.zip
         #wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/icl-1-32243/llama-latest-bin-ubuntu-icl.zip  -O llama-2.zip
 
-        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/tgl-1-23066/llama-latest-bin-ubuntu-tgl.zip
-        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/tgl-3-9976/llama-latest-bin-ubuntu-tgl.zip  -O llama-2.zip
+        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/tgl-4-18963/llama-latest-bin-ubuntu-tgl.zip
+        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/tgl-5-21785/llama-latest-bin-ubuntu-tgl.zip  -O llama-2.zip
 
         #wget -q https://github.com/ggml-org/llama.cpp/releases/download/b11195/llama-b11195-bin-ubuntu-x64.tar.gz -O llama-4.tar.gz
         #tar --no-overwrite-dir -xf llama-4.tar.gz -C /tmp/
@@ -113,23 +113,23 @@ jobs:
 #          --allow-requantize --token-embedding-type q4_0 \
 #          --ffn-down-type iq4_kt --attn-v-type iq4_kt /tmp/qwen3-4B-Q4_0.gguf /tmp/qwen3-4B-IQ4_KT.gguf iq4_kt
 
-#    - name: Quantise Model IQ4_KS_R4
-#      run: |
-#        wget -q https://github.com/cora4/kernel_build_action/releases/download/main-60-19178/xaa -O /tmp/xaa
-#        wget -q https://github.com/cora4/kernel_build_action/releases/download/main-60-19178/xab -O /tmp/xab
-#        cat /tmp/xaa /tmp/xab > /tmp/qwen3-4B-IQ4_KS_R4.gguf
-#        rm /tmp/xaa /tmp/xab
+    - name: Quantise Model IQ4_KS_R4
+      run: |
+        wget -q https://github.com/cora4/kernel_build_action/releases/download/main-60-19178/xaa -O /tmp/xaa
+        wget -q https://github.com/cora4/kernel_build_action/releases/download/main-60-19178/xab -O /tmp/xab
+        cat /tmp/xaa /tmp/xab > /tmp/qwen3-4B-IQ4_KS_R4.gguf
+        rm /tmp/xaa /tmp/xab
 
 #        /tmp/llama-latest/llama-quantize \
 #          --allow-requantize --token-embedding-type iq4_ks \
 #          --ffn-down-type iq4_ks_r4 --attn-v-type iq4_ks_r4 /tmp/qwen3-4B-Q4_0.gguf /tmp/qwen3-4B-IQ4_KS_R4.gguf iq4_ks_r4
           
-#    - name: Quantise Model IQ4_KS_R16
-#      run: |
-#        wget -q https://github.com/cora4/kernel_build_action/releases/download/main-59-18577/xaa -O /tmp/xaa
-#        wget -q https://github.com/cora4/kernel_build_action/releases/download/main-59-18577/xab -O /tmp/xab
-#        cat /tmp/xaa /tmp/xab > /tmp/qwen3-4B-IQ4_KS_R16.gguf
-#        rm /tmp/xaa /tmp/xab
+    - name: Quantise Model IQ4_KS_R16
+      run: |
+        wget -q https://github.com/cora4/kernel_build_action/releases/download/main-59-18577/xaa -O /tmp/xaa
+        wget -q https://github.com/cora4/kernel_build_action/releases/download/main-59-18577/xab -O /tmp/xab
+        cat /tmp/xaa /tmp/xab > /tmp/qwen3-4B-IQ4_KS_R16.gguf
+        rm /tmp/xaa /tmp/xab
         
 #        /tmp/llama-latest/llama-quantize \
 #          --allow-requantize --token-embedding-type iq4_ks \
@@ -222,48 +222,22 @@ jobs:
     #     #  /tmp/llama-prism-b9596-9fcaed7/llama-bench -m /tmp/qwen3-4B-IQ4_NL.gguf
     #     #fi
 
-#    - name: Benchmark Models (latest) IQ4_KS_R4
-#      run: |
-#        echo "Benchmarking Quantised Model (Latest):"
-#        /tmp/llama-latest/llama-bench -m /tmp/qwen3-4B-IQ4_KS_R4.gguf
-        
-#    - name: Benchmark Models (latest) IQ4_KS_R4 (-rtr 1)
-#      run: |
-#        echo "Benchmarking Quantised Model (Latest):"
-#        /tmp/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_KS_R4.gguf
-
-#    - name: Benchmark Models (latest) IQ4_KS_R4 (-rtr 1) (Ver 2.0)
-#      run: |
-#        echo "Benchmarking Quantised Model (Latest):"
-#        /tmp/2/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_KS_R4.gguf
-
-#    - name: Benchmark Models (latest) IQ4_KS_R16
-#      run: |
-#        echo "Benchmarking Quantised Model (Latest):"
-#        /tmp/llama-latest/llama-bench -m /tmp/qwen3-4B-IQ4_KS_R16.gguf
-        
-#    - name: Benchmark Models (latest) IQ4_KS_R16 (-rtr 1)
-#      run: |
-#        echo "Benchmarking Quantised Model (Latest):"
-#        /tmp/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_KS_R16.gguf
-
-#    - name: Benchmark Models (latest) IQ4_XS (Ver 4.0)
-#      run: |
-#        echo "Benchmarking Quantised Model (Latest):"
-#        rm /tmp/llama-b11195/libggml-cpu-zen4.so
-#        /tmp/llama-b11195/llama-bench -m /tmp/qwen3-4B-IQ4_XS.gguf
-        
-    - name: Benchmark Models (latest) IQ4_XS (-rtr 1)
+    - name: Benchmark Models (latest) IQ4_KS_R4
       run: |
         echo "Benchmarking Quantised Model (Latest):"
-        /tmp/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_XS.gguf
+        /tmp/llama-latest/llama-bench -m /tmp/qwen3-4B-IQ4_KS_R4.gguf
         
-    - name: Benchmark Models (latest) IQ4_XS (-rtr 1) (Ver 2.0)
+    - name: Benchmark Models (latest) IQ4_KS_R4 (-rtr 1)
       run: |
         echo "Benchmarking Quantised Model (Latest):"
-        /tmp/2/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_XS.gguf
+        /tmp/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_KS_R4.gguf
 
-    - name: Benchmark Models (latest) IQ4_XS
+    - name: Benchmark Models (latest) IQ4_KS_R16
       run: |
         echo "Benchmarking Quantised Model (Latest):"
-        /tmp/llama-latest/llama-bench -m /tmp/qwen3-4B-IQ4_XS.gguf
+        /tmp/2/llama-latest/llama-bench -m /tmp/qwen3-4B-IQ4_KS_R16.gguf
+        
+    - name: Benchmark Models (latest) IQ4_KS_R16 (-rtr 1)
+      run: |
+        echo "Benchmarking Quantised Model (Latest):"
+        /tmp/2/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_KS_R16.gguf
