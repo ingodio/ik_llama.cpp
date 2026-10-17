@@ -66,11 +66,11 @@ jobs:
         wget -q https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b9596-9fcaed7/llama-prism-b9596-9fcaed7-bin-ubuntu-x64.tar.gz
     - name: Extract Binaries
       run: |
-        unzip -o llama-latest-bin-ubuntu-spr.zip -d /tmp/ || \
-        unzip -o llama-latest-bin-ubuntu-zen4.zip -d /tmp/ || \
-        unzip -o llama-latest-bin-ubuntu-tgl.zip -d /tmp/ || \
-        unzip -o llama-latest-bin-ubuntu-icl.zip -d /tmp/ || \
-        unzip -o llama-latest-bin-ubuntu-zen3.zip -d /tmp/
+        unzip -qo llama-latest-bin-ubuntu-spr.zip -d /tmp/ || \
+        unzip -qo llama-latest-bin-ubuntu-zen4.zip -d /tmp/ || \
+        unzip -qo llama-latest-bin-ubuntu-tgl.zip -d /tmp/ || \
+        unzip -qo llama-latest-bin-ubuntu-icl.zip -d /tmp/ || \
+        unzip -qo llama-latest-bin-ubuntu-zen3.zip -d /tmp/
         tar --no-overwrite-dir -xf llama-prism-b9596-9fcaed7-bin-ubuntu-x64.tar.gz -C /tmp/ || true
         # rm /tmp/llama-prism-b9596-9fcaed7/libggml-cpu-sapphirerapids.so
         rm /tmp/llama-prism-b9596-9fcaed7/libggml-cpu-alderlake.so
