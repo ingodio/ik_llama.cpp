@@ -23,7 +23,6 @@ jobs:
                     echo "Architecture: Granite Rapids"
                 else
                     echo "Architecture: Emerald Rapids"
-                    exit 1
                 fi
                 #wget -q https://github.com/cora4/ik_llama.cpp/releases/download/spr-28-25/llama-latest-bin-ubuntu-spr.zip -O llama-2.zip
             else
@@ -33,7 +32,6 @@ jobs:
                     exit 1
                 fi
                 echo "Architecture: Ice Lake"
-                exit 1
                 #wget -q https://github.com/cora4/ik_llama.cpp/releases/download/tgl-69-????/llama-latest-bin-ubuntu-tgl.zip  -O llama-3.zip
             fi
         else
@@ -43,15 +41,14 @@ jobs:
                 else
                     echo "Architecture: Zen 5"
                 fi
-                exit 1
                 # wget -q https://github.com/cora4/ik_llama.cpp/releases/download/zen4-19-14370/llama-latest-bin-ubuntu-zen4.zip
             fi
         fi
         #wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/icl-2-503/llama-latest-bin-ubuntu-icl.zip
         #wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/icl-1-32243/llama-latest-bin-ubuntu-icl.zip  -O llama-2.zip
 
-        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/tgl-4-18963/llama-latest-bin-ubuntu-tgl.zip
-        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/tgl-5-21785/llama-latest-bin-ubuntu-tgl.zip  -O llama-2.zip
+        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/tgl-6-3052/llama-latest-bin-ubuntu-tgl.zip
+        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/tgl-7-12920/llama-latest-bin-ubuntu-tgl.zip  -O llama-2.zip
 
         #wget -q https://github.com/ggml-org/llama.cpp/releases/download/b11195/llama-b11195-bin-ubuntu-x64.tar.gz -O llama-4.tar.gz
         #tar --no-overwrite-dir -xf llama-4.tar.gz -C /tmp/
@@ -223,22 +220,12 @@ jobs:
     #     #  /tmp/llama-prism-b9596-9fcaed7/llama-bench -m /tmp/qwen3-4B-IQ4_NL.gguf
     #     #fi
 
-    - name: Benchmark Models (latest) IQ4_KS_R16
-      run: |
-        echo "Benchmarking Quantised Model (Latest):"
-        /tmp/2/llama-latest/llama-bench -m /tmp/qwen3-4B-IQ4_KS_R16.gguf
-        
     - name: Benchmark Models (latest) IQ4_KS_R16 (-rtr 1)
       run: |
         echo "Benchmarking Quantised Model (Latest):"
-        /tmp/2/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_KS_R16.gguf
-
-    - name: Benchmark Models (latest) IQ4_KS
-      run: |
-        echo "Benchmarking Quantised Model (Latest):"
-        /tmp/llama-latest/llama-bench -m /tmp/qwen3-4B-IQ4_KS.gguf
+        /tmp/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_KS_R16.gguf
         
-    - name: Benchmark Models (latest) IQ4_KS (-rtr 1)
+    - name: Benchmark Models (latest) IQ4_KS_R16 (-rtr 1) (Ver 2.0)
       run: |
         echo "Benchmarking Quantised Model (Latest):"
-        /tmp/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_KS.gguf
+        /tmp/2/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_KS_R16.gguf
