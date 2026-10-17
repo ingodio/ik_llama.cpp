@@ -20,7 +20,7 @@ jobs:
       matrix:
         include:
           - build: 'x86_64'
-            os: ubuntu-24.04-arm
+            os: ubuntu-26.04-arm
 
     runs-on: ${{ matrix.os }}
 
@@ -34,12 +34,12 @@ jobs:
         with:
           key: ubuntu-cpu-${{ matrix.build }}
 
-      - name: Toolchain workaround (GCC 13)
+      - name: Toolchain workaround (GCC 16)
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-13-x86-64-linux-gnu g++-13-x86-64-linux-gnu patchelf
-          echo "CC=x86_64-linux-gnu-gcc-13 -march=tigerlake" >> "$GITHUB_ENV"
-          echo "CXX=x86_64-linux-gnu-g++-13 -march=tigerlake" >> "$GITHUB_ENV"
+          sudo apt-get install -y gcc-16-x86-64-linux-gnu g++-16-x86-64-linux-gnu patchelf
+          echo "CC=x86_64-linux-gnu-gcc-16 -march=tigerlake" >> "$GITHUB_ENV"
+          echo "CXX=x86_64-linux-gnu-g++-16 -march=tigerlake" >> "$GITHUB_ENV"
       - name: Swap Endianness
         id: endianness
         if: ${{ matrix.build == 's390x' }}
@@ -50,8 +50,8 @@ jobs:
       - name: Build
         id: cmake_build
         run: |
-          x86_64-linux-gnu-g++-13 --version
-          x86_64-linux-gnu-gcc-13 --version
+          x86_64-linux-gnu-g++-16 --version
+          x86_64-linux-gnu-gcc-16 --version
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DGGML_NATIVE=OFF \
