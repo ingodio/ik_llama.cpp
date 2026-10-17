@@ -32,12 +32,14 @@ jobs:
                     exit 1
                 fi
                 echo "Architecture: Ice Lake"
+                exit 1
                 #wget -q https://github.com/cora4/ik_llama.cpp/releases/download/tgl-69-????/llama-latest-bin-ubuntu-tgl.zip  -O llama-3.zip
             fi
         else
             if grep -q "AMD" /proc/cpuinfo; then
                 if lscpu | grep "CPU family"|grep -q 25; then
                     echo "Architecture: Zen 4"
+                    exit 1
                 else    
                     echo "Architecture: Zen 5"
                 fi
