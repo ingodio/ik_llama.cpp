@@ -221,16 +221,6 @@ jobs:
     #     #  /tmp/llama-prism-b9596-9fcaed7/llama-bench -m /tmp/qwen3-4B-IQ4_NL.gguf
     #     #fi
 
-    - name: Benchmark Models (latest) IQ4_KS
-      run: |
-        echo "Benchmarking Quantised Model (Latest):"
-        /tmp/llama-latest/llama-bench -m /tmp/qwen3-4B-IQ4_KS.gguf
-        
-    - name: Benchmark Models (latest) IQ4_KS (-rtr 1)
-      run: |
-        echo "Benchmarking Quantised Model (Latest):"
-        /tmp/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_KS.gguf
-
     - name: Benchmark Models (latest) IQ4_KS_R16
       run: |
         echo "Benchmarking Quantised Model (Latest):"
@@ -240,3 +230,13 @@ jobs:
       run: |
         echo "Benchmarking Quantised Model (Latest):"
         /tmp/2/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_KS_R16.gguf
+
+    - name: Benchmark Models (latest) IQ4_KS
+      run: |
+        echo "Benchmarking Quantised Model (Latest):"
+        /tmp/llama-latest/llama-bench -m /tmp/qwen3-4B-IQ4_KS.gguf
+        
+    - name: Benchmark Models (latest) IQ4_KS (-rtr 1)
+      run: |
+        echo "Benchmarking Quantised Model (Latest):"
+        /tmp/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_KS.gguf
