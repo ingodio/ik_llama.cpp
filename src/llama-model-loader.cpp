@@ -1056,18 +1056,24 @@ struct ggml_tensor * llama_model_loader::create_tensor(struct ggml_context * ctx
         return NULL;
     }
 
-    // skip unused tensors (per-tensor detail at debug level; one summary at
-    // done_getting_tensors so ordinary loads are not flooded by an unused
-    // NextN/MTP head)
-    if (flags & TENSOR_SKIP) {
-        const size_t nbytes = ggml_nbytes(cur);
-        LLAMA_LOG_DEBUG("model has unused tensor %s (size = %zu bytes) -- ignoring\n", name.c_str(), nbytes);
+    // skip unused tensors
+    if (info.op == GGML_OP_NONE || (flags & TENSOR_SKIP)) {
+        auto skip_tensor = [&](const ggml_tensor * tensor) {
+                const size_t nbytes = ggml_nbytes(tensor);
+                LLAMA_LOG_WARN("model has unused tensor %s (size = %zu bytes) -- ignoring\n", tensor->name, nbytes);
 
-        n_skipped++;
-        size_skipped += nbytes;
-
-        size_data -= nbytes;
-        n_created++;
+                size_data -= nbytes;
+                n_created++;
+            };
+    
+                if ((flags & TENSOR_SKIP) && tn.suffix && strcmp(tn.suffix, "weight") == 0) {
+                for (const char * suffix : { "scale", "input_scale" }) {
+                    const LLM_TN_IMPL sidecar_tn(tn.arch, tn.tensor, suffix, tn.bid, tn.xid);
+                    if (const ggml_tensor * sidecar = get_tensor_meta(sidecar_tn.str().c_str())) {
+                        skip_tensor(sidecar);
+                    }
+                }
+            }
 
         return nullptr;
     }
