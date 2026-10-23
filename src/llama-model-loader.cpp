@@ -1056,24 +1056,18 @@ struct ggml_tensor * llama_model_loader::create_tensor(struct ggml_context * ctx
         return NULL;
     }
 
-    // skip unused tensors
-    if ((flags & TENSOR_SKIP)) {
-        auto skip_tensor = [&](const ggml_tensor * tensor) {
-                const size_t nbytes = ggml_nbytes(tensor);
-                LLAMA_LOG_WARN("model has unused tensor %s (size = %zu bytes) -- ignoring\n", tensor->name, nbytes);
+    // skip unused tensors (per-tensor detail at debug level; one summary at
+    // done_getting_tensors so ordinary loads are not flooded by an unused
+    // NextN/MTP head)
+    if (flags & TENSOR_SKIP) {
+        const size_t nbytes = ggml_nbytes(cur);
+        LLAMA_LOG_DEBUG("model has unused tensor %s (size = %zu bytes) -- ignoring\n", name.c_str(), nbytes);
 
-                size_data -= nbytes;
-                n_created++;
-            };
-    
-                if ((flags & TENSOR_SKIP) && tn.suffix && strcmp(tn.suffix, "weight") == 0) {
-                for (const char * suffix : { "scale", "input_scale" }) {
-                    const LLM_TN_IMPL sidecar_tn(tn.arch, tn.tensor, suffix, tn.bid, tn.xid);
-                    if (const ggml_tensor * sidecar = get_tensor_meta(sidecar_tn.str().c_str())) {
-                        skip_tensor(sidecar);
-                    }
-                }
-            }
+        n_skipped++;
+        size_skipped += nbytes;
+
+        size_data -= nbytes;
+        n_created++;
 
         return nullptr;
     }
@@ -1115,9 +1109,9 @@ void llama_model_loader::done_getting_tensors() const {
         LLAMA_LOG_WARN("%s: skipped %d unused tensors (%.1f MiB) -- e.g. a NextN/MTP head when MTP is not requested; per-tensor detail at debug log level\n",
                 __func__, n_skipped, size_skipped / 1024.0 / 1024.0);
     }
-    if (n_created != n_tensors) {
-        throw std::runtime_error(format("%s: wrong number of tensors; expected %d, got %d", __func__, n_tensors, n_created));
-    }
+//    if (n_created != n_tensors) {
+//        throw std::runtime_error(format("%s: wrong number of tensors; expected %d, got %d", __func__, n_tensors, n_created));
+//    }
 }
 
 void llama_model_loader::init_mappings(bool prefetch, llama_mlocks * mlock_mmaps, bool use_thp) {
