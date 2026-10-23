@@ -1057,7 +1057,7 @@ struct ggml_tensor * llama_model_loader::create_tensor(struct ggml_context * ctx
     }
 
     // skip unused tensors
-    if (info.op == GGML_OP_NONE || (flags & TENSOR_SKIP)) {
+    if ((flags & TENSOR_SKIP)) {
         auto skip_tensor = [&](const ggml_tensor * tensor) {
                 const size_t nbytes = ggml_nbytes(tensor);
                 LLAMA_LOG_WARN("model has unused tensor %s (size = %zu bytes) -- ignoring\n", tensor->name, nbytes);
