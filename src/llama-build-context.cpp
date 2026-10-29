@@ -66,7 +66,6 @@ llm_build_context::llm_build_context(
         norm_eps         (hparams.f_norm_eps),
         norm_rms_eps     (hparams.f_norm_rms_eps),
         n_tokens         (batch.n_tokens),
-        n_tokens_seg     (batch.n_tokens),
         n_kv             (worst_case ? kv_self.size : kv_self.n),
         n_outputs        (worst_case ? n_outputs_ > 0 ? n_outputs_ : n_tokens : lctx.n_outputs),
         n_outputs_enc    (worst_case ? n_tokens : lctx.embd_enc.size() / hparams.n_embd),
@@ -89,7 +88,6 @@ llm_build_context::llm_build_context(
         pooling_type     (cparams.pooling_type),
         rope_type        (hparams.rope_type),
         clear_lctx_inputs(clear_lctx_inputs),
-        worst_case       (worst_case),
         cb               (cb),
         buf_compute_meta (buf_compute_meta_override ? *buf_compute_meta_override : lctx.buf_compute_meta) {
             // all initializations should be done in init()
@@ -190,10 +188,6 @@ ggml_cgraph * llm_build_context::build_k_shift() {
             continue;
         }
         if (kv_self.k_l[il] == nullptr) {
-            continue;
-        }
-        // NoPE layer: no K rotation
-        if (!hparams.has_rope(il)) {
             continue;
         }
         const int64_t n_head_kv = hparams.n_head_kv(il);
@@ -1356,9 +1350,6 @@ ggml_tensor * llm_build_context::llm_build_ffn(
         return cur;
     }
 
-    if (add_extra && add_extra->op == GGML_OP_REDUCE && add_extra->op_params[3] == 1) {
-        add_extra->op_params[3] = 0;
-    }
     auto cur = input;
     //if (input->op == GGML_OP_REDUCE) {
     //    if (input->src[lctx.model.main_gpu]) cur = input->src[lctx.model.main_gpu];
@@ -2280,7 +2271,7 @@ static ggml_tensor * llm_build_kqv(
                 hparams.attn_soft_cap ? hparams.f_attn_logit_softcapping : 0.0f);
         cb(cur, "fa", il);
         ggml_flash_attn_ext_add_sinks(cur, sinks);
-        if (n_swa > 0 && !kv.cells_disordered && cparams.n_seq_max == 1) {
+        if (n_swa > 0 && !kv.cells_disordered) {
             ((int32_t *)cur->op_params)[4] = n_swa;
         }
 
@@ -3010,10 +3001,6 @@ ggml_cgraph * llm_build_context::llama_build_graph(
             {
                 result = llm.build_qwen3moe();
             } break;
-        case LLM_ARCH_FLINT:
-            {
-                result = llm.build_flint();
-            } break;
         case LLM_ARCH_MELLUM:
             {
                 result = llm.build_mellum();
@@ -3541,7 +3528,7 @@ ggml_tensor * llm_build_context::build_std_attention(ggml_cgraph * gf, ggml_tens
                 } else {
                     ggml_flash_attn_ext_add_sinks(cur, sinks);
                 }
-                if (n_swa > 0 && !lctx.kv_self.cells_disordered && cparams.n_seq_max == 1) {
+                if (n_swa > 0 && !lctx.kv_self.cells_disordered) {
                     ((int32_t *)cur->op_params)[4] = n_swa;
                 }
                 // Some models produced NaNs/gibberish when FA is computed with f16 precision on CUDA

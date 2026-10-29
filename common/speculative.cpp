@@ -58,8 +58,6 @@ const std::map<std::string, enum common_speculative_type> common_speculative_typ
     {"suffix",        COMMON_SPECULATIVE_TYPE_SUFFIX}
 };
 
-const llama_ckpt_data spec_ckpt = { LLAMA_CHECKPOINT_SPEC, 0 };
-
 bool common_speculative_needs_checkpoint(const llama_model * model) {
     return model != nullptr &&
         llama_model_has_recurrent(model);
@@ -884,6 +882,7 @@ struct common_speculative_state_ngram_mod : public common_speculative_state {
 };
 
 struct common_speculative_state_ngram_cache : public common_speculative_state {
+    uint16_t n_draft;
     bool save_dynamic;
     bool save_static;
 
@@ -891,15 +890,17 @@ struct common_speculative_state_ngram_cache : public common_speculative_state {
     common_ngram_cache ngram_cache_dynamic;
     common_ngram_cache ngram_cache_static;
 
-    llama_tokens context_tokens;
+    size_t cache_size = 0; // number of tokens in n-gram cache
 
     common_speculative_state_ngram_cache(
             const enum common_speculative_type type,
             const std::string & path_static,
             const std::string & path_dynamic,
+            uint16_t            n_draft,
             bool                save_dynamic,
             bool                save_static)
         : common_speculative_state(type)
+        , n_draft(n_draft)
         , save_dynamic(save_dynamic)
         , save_static(save_static)
     {
@@ -924,8 +925,6 @@ struct common_speculative_state_ngram_cache : public common_speculative_state {
 
     void begin(const llama_tokens & prompt) override {
         GGML_UNUSED(prompt);
-        ngram_cache_context.clear();
-        context_tokens.clear();
     }
 
     void draft(
@@ -933,6 +932,22 @@ struct common_speculative_state_ngram_cache : public common_speculative_state {
             const llama_tokens & prompt_tgt,
             llama_token id_last,
             llama_tokens & result) override {
+        GGML_UNUSED(params);
+
+        if (cache_size < prompt_tgt.size() + 1) {
+            llama_tokens tokens_new;
+            tokens_new.reserve(prompt_tgt.size() + 1 - cache_size);
+            for (size_t j = cache_size; j < prompt_tgt.size(); ++j) {
+                tokens_new.push_back(prompt_tgt[j]);
+            }
+            tokens_new.push_back(id_last); // add the last token
+
+            // Update context ngram cache with new prompt_tgt:
+            common_ngram_cache_update(ngram_cache_context, LLAMA_NGRAM_MIN, LLAMA_NGRAM_MAX,
+                    tokens_new, tokens_new.size(), false);
+            cache_size = prompt_tgt.size() + 1;
+        }
+
         llama_tokens inp;
         inp.reserve(prompt_tgt.size() + 1);
         for (size_t j = 0; j < prompt_tgt.size(); ++j) {
@@ -940,24 +955,9 @@ struct common_speculative_state_ngram_cache : public common_speculative_state {
         }
         inp.push_back(id_last);
 
-        // Keep the full sequence for cross-boundary n-grams, rebuild after shrink/shift/rewrite.
-        const bool extends_context = inp.size() >= context_tokens.size() &&
-            std::equal(context_tokens.begin(), context_tokens.end(), inp.begin());
-        if (!extends_context) {
-            ngram_cache_context.clear();
-            context_tokens.clear();
-        }
-
-        const size_t nnew = inp.size() - context_tokens.size();
-        if (nnew > 0) {
-            common_ngram_cache_update(ngram_cache_context, LLAMA_NGRAM_MIN, LLAMA_NGRAM_MAX,
-                    inp, static_cast<int>(nnew), false);
-            context_tokens = inp;
-        }
-
         result.push_back(id_last);
 
-        common_ngram_cache_draft(inp, result, params.n_max, LLAMA_NGRAM_MIN, LLAMA_NGRAM_MAX,
+        common_ngram_cache_draft(inp, result, n_draft, LLAMA_NGRAM_MIN, LLAMA_NGRAM_MAX,
                 ngram_cache_context,
                 ngram_cache_dynamic,
                 ngram_cache_static);
@@ -1196,11 +1196,13 @@ static common_ngram_map get_common_ngram_map(const common_speculative_config & c
 static common_speculative_state_ngram_cache create_state_ngram_cache(
         const std::string & path_static, const std::string & path_dynamic,
         const common_speculative_config & config) {
+    uint16_t n_draft = 8; // TODO get from config?
+
     // TODO bool param in common/common.h to set save_static/save_dynamic?
     bool save_static = false;
     bool save_dynamic = false;
 
-    common_speculative_state_ngram_cache state(config.type, path_static, path_dynamic, save_dynamic, save_static);
+    common_speculative_state_ngram_cache state(config.type, path_static, path_dynamic, n_draft, save_static, save_dynamic);
 
     return state;
 }
@@ -1419,7 +1421,7 @@ common_speculative * common_speculative_init(
 
     if (!configs.empty() && common_speculative_needs_checkpoint(target_model)) {
         const int ckpt_tokens = std::max(1, params.get_max_stage_n_max() + 1);
-        const int actual_mode = llama_spec_ckpt_init(ctx_tgt, spec_ckpt, params.spec_ckpt_mode, ckpt_tokens);
+        const int actual_mode = llama_spec_ckpt_init(ctx_tgt, params.spec_ckpt_mode, ckpt_tokens);
         if (actual_mode == LLAMA_SPEC_CKPT_NONE) {
             LOG_ERR("%s: failed to prepare speculative checkpoint mode '%s' during speculative init (max_tokens=%d)\n",
                     __func__,
@@ -1432,7 +1434,7 @@ common_speculative * common_speculative_init(
             }
             return nullptr;
         }
-        llama_spec_ckpt_discard(ctx_tgt, spec_ckpt);
+        llama_spec_ckpt_discard(ctx_tgt);
         params.spec_ckpt_mode = actual_mode;
     }
 
@@ -2135,10 +2137,6 @@ bool common_speculative_load_draft_model(
     params.model_dft = loaded_model;
     params.cparams_dft = common_context_params_to_llama(params_dft);
     params.cparams_dft.moe_cache_size = 0;
-    params.cuda_params = params_dft.cuda_params;
-    params.offload_policy = params_dft.offload_policy;
-    params.cparams_dft.cuda_params    = params.cuda_params.empty()    ? nullptr : (void *) params.cuda_params.data();
-    params.cparams_dft.offload_policy = params.offload_policy.empty() ? nullptr : (void *) &params.offload_policy;
     // draft affinity; inherits the target one when not requested
     const std::vector<int32_t> & cpu_affinity_dft = params.cpu_affinity_configured
         ? params.cpu_affinity
@@ -2188,10 +2186,6 @@ bool common_speculative_prepare_mtp_runtime(
         common_speculative_apply_draft_threads(params, params_mtp);
         params.cparams_dft = common_context_params_to_llama(params_mtp);
         params.cparams_dft.moe_cache_size = 0;
-        params.cuda_params = params_mtp.cuda_params;
-        params.offload_policy = params_mtp.offload_policy;
-        params.cparams_dft.cuda_params    = params.cuda_params.empty()    ? nullptr : (void *) params.cuda_params.data();
-        params.cparams_dft.offload_policy = params.offload_policy.empty() ? nullptr : (void *) &params.offload_policy;
         // same draft affinity as the external draft path
         const std::vector<int32_t> & cpu_affinity_dft = params.cpu_affinity_configured
             ? params.cpu_affinity
@@ -2635,15 +2629,15 @@ static bool common_speculative_checkpoint_save(
     ckpt.n_past = n_past;
     ckpt.sampled = sampled;
 
-    const int actual_mode = llama_spec_ckpt_init(ctx, spec_ckpt, ckpt_mode, max_tokens);
+    const int actual_mode = llama_spec_ckpt_init(ctx, ckpt_mode, max_tokens);
     if (actual_mode == LLAMA_SPEC_CKPT_NONE) {
         return false;
     }
     ckpt.mode = actual_mode;
 
-    ckpt.valid = llama_spec_ckpt_save(ctx, spec_ckpt, seq_id);
+    ckpt.valid = llama_spec_ckpt_save(ctx, seq_id);
     if (!ckpt.valid) {
-        llama_spec_ckpt_discard(ctx, spec_ckpt);
+        llama_spec_ckpt_discard(ctx);
         return false;
     }
 
@@ -2668,7 +2662,7 @@ void common_speculative_checkpoint_discard(
         common_speculative_checkpoint & ckpt,
         llama_context * ctx) {
     ckpt.clear();
-    llama_spec_ckpt_discard(ctx, spec_ckpt);
+    llama_spec_ckpt_discard(ctx);
 }
 
 bool common_speculative_checkpoint_restore(
@@ -2689,7 +2683,7 @@ bool common_speculative_checkpoint_restore(
 
     const int step = (int) ids.size() - 1;
     const enum llama_spec_ckpt_restore_result restore_result = llama_spec_ckpt_restore_ex(
-            ctx, spec_ckpt, seq_id, ckpt.n_past, ckpt.mode == LLAMA_SPEC_CKPT_PER_STEP ? step : 0);
+            ctx, seq_id, ckpt.n_past, ckpt.mode == LLAMA_SPEC_CKPT_PER_STEP ? step : 0);
     if (restore_result == LLAMA_SPEC_CKPT_RESTORE_FAILED) {
         LOG_ERR("%s: seq_id=%d speculative checkpoint restore failed\n", __func__, (int) seq_id);
         common_speculative_checkpoint_discard(ckpt, ctx);
