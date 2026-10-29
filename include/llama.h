@@ -247,6 +247,7 @@ extern "C" {
         LLAMA_FTYPE_MOSTLY_IQ4_KS_R4     = 345, // except 1d tensors
         LLAMA_FTYPE_MOSTLY_IQ4_KS_R16    = 346, // except 1d tensors
         LLAMA_FTYPE_MOSTLY_IQ3_KS_R16    = 347, // except 1d tensors (16-row interleaved iq3ks-class codebook 3-bit)
+        LLAMA_FTYPE_MOSTLY_IQ5_KS_R16    = 348, // except 1d tensors (16-row interleaved iq3ks-class codebook 3-bit)
         LLAMA_FTYPE_MOSTLY_IQ5_KS_R4     = 350, // except 1d tensors
         LLAMA_FTYPE_MOSTLY_MXFP4_R8      = 351, // except 1d tensors
         LLAMA_FTYPE_MOSTLY_Q8_KV_R8      = 398, // except 1d tensors
@@ -1180,6 +1181,9 @@ extern "C" {
     // Get the argmax token ID for DFlash draft position i without materializing full logits.
     // Returns LLAMA_TOKEN_NULL if argmax is not available (falls back to logits path).
     LLAMA_API llama_token llama_get_dflash_draft_token_ith(struct llama_context * ctx, int32_t i);
+
+    // Materialize the DFlash draft logits on the host for llama_get_logits_ith(); off by default.
+    LLAMA_API void llama_set_dflash_want_logits(struct llama_context * ctx, bool want);
 
     // Copy DFlash2 selector lattice after a draft decode with top_k*top_k scores
     // and top_k candidate IDs per position.
