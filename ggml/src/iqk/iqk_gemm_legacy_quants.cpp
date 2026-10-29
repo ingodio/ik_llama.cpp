@@ -2068,7 +2068,7 @@ static void mul_mat_iqX_ks_r16_q8_K(int n, const void * vx, size_t bx, const Dat
 }
 
 struct DequantIQ4KS {
-    using type = block_iq4_ks;
+    using type = block_iq4_ks_r16;
     const __m512i m4 = _mm512_set1_epi8(0xf);
     const __m512i table = load_iq4nl_values_512();
     inline void prepare_block(const type & b, __m512i & iscales, __m512i & imins, __m512i * qx) {
@@ -2085,7 +2085,7 @@ struct DequantIQ4KS {
 };
 
 struct DequantIQ5KS {
-    using type = block_iq5_ks;
+    using type = block_iq5_ks_r16;
     DequantIQ5KS() {
         for (int i = 0; i < 2; ++i) {
             auto val = _mm_loadu_si128((const __m128i *)iq5nl_values + i);
