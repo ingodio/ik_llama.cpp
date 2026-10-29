@@ -1056,15 +1056,6 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .nrows                    = 1,
         .row_meta_size            = 0,
     },
-    [GGML_TYPE_Q8_0_R16] = {
-        .type_name                = "q8_0_r16",
-        .blck_size                = QK8_0,
-        .type_size                = sizeof(block_q8_0_r16)/16,
-        .is_quantized             = true,
-        .vec_dot_type             = GGML_TYPE_Q8_2_X4,
-        .nrows                    = 1,
-        .row_meta_size            = 0,
-    },
     [GGML_TYPE_Q8_K_R16] = {
         .type_name                = "q8_k_r16",
         .blck_size                = QK_K,
@@ -1416,7 +1407,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
     },
 
     [GGML_TYPE_IQ3_KS_R16] = {
-        .type_name                = "iq3_ks_r16",
+        .type_name                = "iq3ks_r16",
         .blck_size                = QK8_0,
         .type_size                = 13, // (204 B per 16-row x 32-col block)/16 rows, rounded up
         .is_quantized             = true,
@@ -1693,9 +1684,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .from_float               = quantize_row_iq1_kt,
         .from_float_ref           = (ggml_from_float_t)quantize_row_iq1_kt_ref,
         .vec_dot                  = vec_dot_iq1_kt_q8_k,
-#ifdef HAVE_FANCY_SIMD
-        .vec_dot_type             = GGML_TYPE_Q8_K,
-#elif defined __AVX2__
+#if defined __AVX2__
         .vec_dot_type             = GGML_TYPE_Q8_2_X4,
 #else
         .vec_dot_type             = GGML_TYPE_Q8_0_X4,
@@ -1712,9 +1701,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .from_float               = quantize_row_iq2_kt,
         .from_float_ref           = (ggml_from_float_t)quantize_row_iq2_kt_ref,
         .vec_dot                  = vec_dot_iq2_kt_q8_k,
-#ifdef HAVE_FANCY_SIMD
-        .vec_dot_type             = GGML_TYPE_Q8_K,
-#elif defined __AVX2__
+#if defined __AVX2__
         .vec_dot_type             = GGML_TYPE_Q8_2_X4,
 #else
         .vec_dot_type             = GGML_TYPE_Q8_0_X4,
@@ -1731,9 +1718,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .from_float               = quantize_row_iq3_kt,
         .from_float_ref           = (ggml_from_float_t)quantize_row_iq3_kt_ref,
         .vec_dot                  = vec_dot_iq3_kt_q8_k,
-#ifdef HAVE_FANCY_SIMD
-        .vec_dot_type             = GGML_TYPE_Q8_K,
-#elif defined __AVX2__
+#if defined __AVX2__
         .vec_dot_type             = GGML_TYPE_Q8_2_X4,
 #else
         .vec_dot_type             = GGML_TYPE_Q8_0_X4,
@@ -1755,9 +1740,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .from_float               = quantize_row_iq4_kt,
         .from_float_ref           = (ggml_from_float_t)quantize_row_iq4_kt_ref,
         .vec_dot                  = vec_dot_iq4_kt_q8_k,
-#ifdef HAVE_FANCY_SIMD
-        .vec_dot_type             = GGML_TYPE_Q8_K,
-#elif defined __AVX2__
+#if defined __AVX2__
         .vec_dot_type             = GGML_TYPE_Q8_2_X4,
 #else
         .vec_dot_type             = GGML_TYPE_Q8_0_X4,
@@ -2223,7 +2206,7 @@ ggml_type_traits_t ggml_internal_get_type_traits(enum ggml_type type) {
 }
 
 static inline int ggml_packed_rows(enum ggml_type type) {
-    return type == GGML_TYPE_BF16_R16 || type == GGML_TYPE_Q8_K_R16 || type == GGML_TYPE_IQ3_KS_R16 || type == GGML_TYPE_Q8_0_R16 ? 16
+    return type == GGML_TYPE_BF16_R16 || type == GGML_TYPE_Q8_K_R16 || type == GGML_TYPE_IQ3_KS_R16 ? 16
          : type == GGML_TYPE_Q8_K_R8 || type == GGML_TYPE_Q8_KV_R8 ||
            type == GGML_TYPE_Q8_0_R8 || type == GGML_TYPE_Q4_0_R8 ||
            type == GGML_TYPE_IQ4_XS_R8 ? 8
@@ -15639,26 +15622,6 @@ static void ggml_compute_forward_repeat_f32(
     int ith = params->ith;
     int nth = params->nth;
 
-    if (n_repeated_dims == 1 && repeated_dim > 0 && src0->nb[0] == sizeof(float) && dst->nb[0] == sizeof(float)) {
-        const int64_t nr  = ggml_nrows(dst);
-        const int64_t dr  = (nr + nth - 1)/nth;
-        const int64_t ir0 = dr*ith;
-        const int64_t ir1 = MIN(ir0 + dr, nr);
-        const int64_t n1 = dst->ne[1], n2 = dst->ne[2];
-        for (int64_t ir = ir0; ir < ir1; ++ir) {
-            int64_t i[4];
-            i[0] = 0;
-            i[3] = ir/(n2*n1);
-            i[2] = (ir - i[3]*n2*n1)/n1;
-            i[1] = ir - i[3]*n2*n1 - i[2]*n1;
-            char * dst_ptr = (char *)dst->data + i[1]*dst->nb[1] + i[2]*dst->nb[2] + i[3]*dst->nb[3];
-            i[repeated_dim] %= src0->ne[repeated_dim];
-            const char * src_ptr = (const char *)src0->data + i[1]*src0->nb[1] + i[2]*src0->nb[2] + i[3]*src0->nb[3];
-            memcpy(dst_ptr, src_ptr, dst->ne[0]*sizeof(float));
-        }
-        return;
-    }
-
     if (n_repeated_dims == 1) {
         GGML_ASSERT(repeated_dim >= 0 && repeated_dim < GGML_MAX_DIMS);
         int nrows = 1;
@@ -17899,31 +17862,30 @@ static void ggml_compute_forward_rms_norm_f32(
     GGML_ASSERT(eps > 0.0f);
 
     // TODO: optimize
-    const int64_t nr = ne01*ne02*ne03;
-    for (int64_t ir = ith; ir < nr; ir += nth) {
-        const int64_t i03 = ir/(ne02*ne01);
-        const int64_t i02 = (ir - i03*ne02*ne01)/ne01;
-        const int64_t i01 = ir - i03*ne02*ne01 - i02*ne01;
+    for (int64_t i03 = 0; i03 < ne03; i03++) {
+        for (int64_t i02 = 0; i02 < ne02; i02++) {
+            for (int64_t i01 = ith; i01 < ne01; i01 += nth) {
+                const float * x = (float *) ((char *) src0->data + i01*nb01 + i02*nb02 + i03*nb03);
 
-        const float * x = (float *) ((char *) src0->data + i01*nb01 + i02*nb02 + i03*nb03);
+                ggml_float sum = 0.0;
+                for (int64_t i00 = 0; i00 < ne00; i00++) {
+                    sum += (ggml_float)(x[i00] * x[i00]);
+                }
 
-        ggml_float sum = 0.0;
-        for (int64_t i00 = 0; i00 < ne00; i00++) {
-            sum += (ggml_float)(x[i00] * x[i00]);
+                const float mean = sum/ne00;
+
+                float * y = (float *) ((char *) dst->data + i01*nb1 + i02*nb2 + i03*nb3);
+
+                memcpy(y, x, ne00 * sizeof(float));
+                // for (int i00 = 0; i00 < ne00; i00++) {
+                //     y[i00] = x[i00];
+                // }
+
+                const float scale = 1.0f/sqrtf(mean + eps);
+
+                ggml_vec_scale_f32(ne00, y, scale);
+            }
         }
-
-        const float mean = sum/ne00;
-
-        float * y = (float *) ((char *) dst->data + i01*nb1 + i02*nb2 + i03*nb3);
-
-        memcpy(y, x, ne00 * sizeof(float));
-        // for (int i00 = 0; i00 < ne00; i00++) {
-        //     y[i00] = x[i00];
-        // }
-
-        const float scale = 1.0f/sqrtf(mean + eps);
-
-        ggml_vec_scale_f32(ne00, y, scale);
     }
 }
 
@@ -21179,7 +21141,6 @@ static void ggml_compute_forward_clamp(
         case GGML_TYPE_Q6_K:
         case GGML_TYPE_Q6_K_R4:
         case GGML_TYPE_Q8_K_R8:
-        case GGML_TYPE_Q8_0_R16:
         case GGML_TYPE_Q8_K_R16:
         case GGML_TYPE_IQ3_KS_R16:
         case GGML_TYPE_Q8_KV_R8:
@@ -25162,14 +25123,14 @@ static void ggml_compute_forward_mask_to_idx(const struct ggml_compute_params * 
             const uint16_t * x = (const uint16_t *)((const char *)src->data + i1*src->nb[1] + i2*src->nb[2] + i3*src->nb[3]);
             int idx = 0;
             for (int j = 0; j < ne00; ++j) {
-                assert(idx < ne0 || x[j] != 0);
+                assert(idx < ne0);
                 if (x[j] == 0) y[idx++] = j;
             }
         } else {
             const float * x = (const float *)((const char *)src->data + i1*src->nb[1] + i2*src->nb[2] + i3*src->nb[3]);
             int idx = 0;
             for (int j = 0; j < ne00; ++j) {
-                assert(idx < ne0 || x[j] != 0.0f);
+                assert(idx < ne0);
                 if (x[j] == 0.0f) y[idx++] = j;
             }
         }

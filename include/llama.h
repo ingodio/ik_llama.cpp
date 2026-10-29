@@ -299,16 +299,6 @@ extern "C" {
         MTP_OP_DRAFT_GEN        = 3,
     };
 
-    enum llama_ckpt_type {
-        LLAMA_CHECKPOINT_SPEC = 0,
-        LLAMA_CHECKPOINT_REWIND = 1,
-    };
-
-    typedef struct llama_ckpt_data {
-        enum llama_ckpt_type type;
-        llama_pos pos;
-    } llama_ckpt_data;
-
     typedef struct llama_token_data {
         llama_token id; // token id
         float logit;    // log-odds of the token
@@ -516,7 +506,6 @@ extern "C" {
         bool dsa;               // enable GLM DSA sparse attention (off by default) [EXPERIMENTAL]
         bool fused_idx_topk;    // enable the fused indexer topk op (on by default) [EXPERIMENTAL]
         bool swa_compress;      // allocate sliding-window layers at window size instead of n_ctx (off by default) [EXPERIMENTAL]
-        int  dsv41_replay_keep; // DeepSeek-V4.1 prefill: run the decoder layers on the last N prompt tokens only, N=0 disables (requires swa_compress) [EXPERIMENTAL]
         bool dsv4_legacy_state; // write DeepSeek-V4 state in the legacy full-slice layout (no MAGIC), byte-identical to main [EXPERIMENTAL]
         int  dsa_top_k;         // DSA top-k override (<0 => model's configured indexer_top_k) [EXPERIMENTAL]
         int  min_experts;
@@ -905,29 +894,24 @@ extern "C" {
     };
 
     // Initialise the checkpoint system for the upcoming speculation window.
-    LLAMA_API int llama_spec_ckpt_init(struct llama_context * ctx, llama_ckpt_data ckpt_type, int mode, int max_tokens);
+    LLAMA_API int llama_spec_ckpt_init(struct llama_context * ctx, int mode, int max_tokens);
 
     // Save the current recurrent state as a speculative checkpoint.
-    LLAMA_API bool llama_spec_ckpt_save(struct llama_context * ctx, llama_ckpt_data ckpt_type, llama_seq_id seq_id);
+    LLAMA_API bool llama_spec_ckpt_save(struct llama_context * ctx, llama_seq_id seq_id);
 
     // Save the current recurrent state as a rewind checkpoint
-    LLAMA_API bool llama_rewind_ckpt_save(struct llama_context * ctx, llama_ckpt_data ckpt_type, llama_seq_id seq_id, int max_tokens);
-
-    LLAMA_API bool llama_rewind_ckpt_discard(struct llama_context * ctx, llama_ckpt_data ckpt_type, llama_seq_id seq_id);
-
-    LLAMA_API bool llama_rewind_ckpt_release(struct llama_context * ctx, llama_ckpt_data ckpt_type, llama_seq_id seq_id);
-
+    LLAMA_API bool llama_rewind_ckpt_save(struct llama_context * ctx, llama_seq_id seq_id, int max_tokens);
 
     // Restore the recurrent state after speculative decode.
-    LLAMA_API bool llama_spec_ckpt_restore(struct llama_context * ctx, llama_ckpt_data ckpt_type, llama_seq_id seq_id,
+    LLAMA_API bool llama_spec_ckpt_restore(struct llama_context * ctx, llama_seq_id seq_id,
                                             llama_pos n_past, int accepted_step);
 
     LLAMA_API enum llama_spec_ckpt_restore_result llama_spec_ckpt_restore_ex(
-            struct llama_context * ctx, llama_ckpt_data ckpt_type, llama_seq_id seq_id,
+            struct llama_context * ctx, llama_seq_id seq_id,
             llama_pos n_past, int accepted_step);
 
     // Discard the saved checkpoint and reset internal mode state.
-    LLAMA_API void llama_spec_ckpt_discard(struct llama_context * ctx, llama_ckpt_data ckpt_type);
+    LLAMA_API void llama_spec_ckpt_discard(struct llama_context * ctx);
 
     // Removes all tokens that belong to the specified sequence and have positions in [p0, p1)
     // Returns false if a partial sequence cannot be removed. Removing a whole sequence never fails
@@ -1197,9 +1181,6 @@ extern "C" {
     // Get the argmax token ID for DFlash draft position i without materializing full logits.
     // Returns LLAMA_TOKEN_NULL if argmax is not available (falls back to logits path).
     LLAMA_API llama_token llama_get_dflash_draft_token_ith(struct llama_context * ctx, int32_t i);
-
-    // Materialize the DFlash draft logits on the host for llama_get_logits_ith(); off by default.
-    LLAMA_API void llama_set_dflash_want_logits(struct llama_context * ctx, bool want);
 
     // Copy DFlash2 selector lattice after a draft decode with top_k*top_k scores
     // and top_k candidate IDs per position.

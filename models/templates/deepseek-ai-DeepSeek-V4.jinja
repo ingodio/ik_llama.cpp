@@ -36,7 +36,11 @@
       {%- set ts.schemas = ts.schemas + (tool['function'] | tojson) + '\n' -%}
     {%- endif -%}
   {%- endfor -%}
-  {%- set ns.system_prompt = ns.system_prompt + '\n\n' + tools_header + ts.schemas + tools_footer -%}
+  {%- if ns.system_prompt -%}
+    {%- set ns.system_prompt = ns.system_prompt + '\n\n' + tools_header + ts.schemas + tools_footer -%}
+  {%- else -%}
+    {%- set ns.system_prompt = tools_header + ts.schemas + tools_footer -%}
+  {%- endif -%}
 {%- endif -%}
 {{- bos_token -}}
 {%- if thinking and reasoning_effort is defined -%}

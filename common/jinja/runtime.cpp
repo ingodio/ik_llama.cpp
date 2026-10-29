@@ -786,9 +786,6 @@ value member_expression::execute_impl(context & ctx) {
         } else {
             property = this->property->execute(ctx);
         }
-    } else if (is_stmt<integer_literal>(this->property)) {
-        // syntax: obj.index
-        property = mk_val<value_int>(cast_stmt<integer_literal>(this->property)->val);
     } else {
         // syntax: obj.prop
         if (!is_stmt<identifier>(this->property)) {
