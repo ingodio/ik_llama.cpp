@@ -164,9 +164,6 @@ typedef sycl::half2 ggml_half2;
 #define QI2_0 (QK2_0 / 32)
 #define QR2_0 1
 
-#define PQI2_0 (QK_PQ2_0 / (4*PQR2_0))
-#define PQR2_0 8
-
 #endif // GGML_COMMON_DECL_CUDA || GGML_COMMON_DECL_HIP
 
 #define QK4_0 32
@@ -272,12 +269,6 @@ typedef struct {
     int8_t qs[8*QK8_0];
 } block_q8_0_r8;
 static_assert(sizeof(block_q8_0_r8) == 8*sizeof(block_q8_0), "wrong q8_0_r8 block size/padding");
-
-typedef struct {
-    float   d[16];
-    uint8_t qs[16*QK8_0];
-} block_q8_0_r16;
-static_assert(sizeof(block_q8_0_r16) == 16*sizeof(float) + 16*QK8_0, "wrong q8_0_r16 block size/padding");
 
 typedef struct {
     ggml_half d[4];        // deltas for 4 q4_0 blocks
@@ -857,12 +848,6 @@ typedef struct {
 } block_iq5_ks_r4;
 static_assert(sizeof(block_iq5_ks_r4) == 4*sizeof(block_iq5_ks), "wrong iq5_ks_r4 block size/padding");
 
-typedef struct {
-    uint8_t  scales[16];
-    uint8_t  qs[8*QK8_0];
-    uint8_t  qh[2*QK8_0];
-} block_iq5_ks_r16;
-static_assert(sizeof(block_iq5_ks_r16) == 16 + 10*QK8_0, "wrong iq5_ks_r16 block size/padding");
 
 #endif // GGML_COMMON_DECL
 #endif // GGML_COMMON_DECL

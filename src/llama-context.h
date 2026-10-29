@@ -11,7 +11,6 @@ class llama_moe_cache;
 
 #include <vector>
 #include <map>
-#include <tuple>
 #include <set>
 #include <memory>
 
@@ -289,22 +288,16 @@ struct llama_kv_cache {
     };
 
     gpu_checkpoint ckpt;
-    std::map<llama_pos, gpu_checkpoint *> ckpt_rewind_map;
-    std::vector<std::unique_ptr<gpu_checkpoint>> ckpt_rewind_pool;
 
-    bool checkpoint_alloc_shadows(llama_ckpt_data ckpt_type, bool conv_only_shadow = false);
+    bool checkpoint_alloc_shadows(bool conv_only_shadow = false);
     bool checkpoint_supported() const;
-    bool checkpoint_save(ggml_backend_sched_t sched, llama_ckpt_data ckpt_type);
-    bool checkpoint_restore(ggml_backend_sched_t sched, llama_ckpt_data ckpt_type);
-    void checkpoint_delete(llama_ckpt_data ckpt_type);
-
-    gpu_checkpoint & llama_get_ckpt(llama_ckpt_data ckpt_type);
-
-    bool llama_ckpt_mode_equal(llama_ckpt_data ckpt_type, int mode) const;
+    bool checkpoint_save(ggml_backend_sched_t sched);
+    bool checkpoint_restore(ggml_backend_sched_t sched);
+    void checkpoint_delete();
 
     // Per-step checkpoint: allocate, restore step k's full state (SSM + conv) to cache
     bool per_step_alloc(const llama_model & model, int max_tokens);
-    bool per_step_restore(ggml_backend_sched_t sched, llama_ckpt_data ckpt_type, int step, uint32_t slot);
+    bool per_step_restore(ggml_backend_sched_t sched, int step, uint32_t slot);
 
     ~llama_kv_cache() {
         for (struct ggml_context * ctx : ctxs) {
@@ -331,24 +324,16 @@ struct llama_control_vector {
         return tensors[il];
     }
 
-    // split mode graph: a copy of each layer's direction on every device, [il][device]
-    std::vector<std::vector<struct ggml_tensor *>> dev_tensors;
-    // graph currently being built (set by llm_build_context::new_graph_custom), used by apply_to
-    struct ggml_cgraph * graph = nullptr;
-
     struct ggml_tensor * apply_to(struct ggml_context * ctx, struct ggml_tensor * cur, int  il) const {
         ggml_tensor * layer_dir = tensor_for(il);
-        if (layer_dir == nullptr) {
-            return cur;
+        if (layer_dir != nullptr) {
+            if (layer_dir->type != cur->type && layer_dir->type == GGML_TYPE_F32) {
+                cur = ggml_cast(ctx, cur, GGML_TYPE_F32);
+            }
+            cur = ggml_add(ctx, cur, layer_dir);
         }
-        if (ggml_tensor * res = apply_to_reduce(ctx, cur, il)) {
-            return res;
-        }
-        return ggml_add(ctx, cur, layer_dir);
+        return cur;
     }
-
-    struct ggml_tensor * apply_to_device(struct ggml_context * ctx, struct ggml_tensor * cur, int il, int id) const;
-    struct ggml_tensor * apply_to_reduce(struct ggml_context * ctx, struct ggml_tensor * cur, int il) const;
 
     ~llama_control_vector() {
         for (struct ggml_context * ctx : ctxs) {
@@ -530,7 +515,6 @@ struct llama_context {
         input_state inputs;
         int32_t visible_cross_ctx = 0;
         bool dspark = false;
-        bool want_dspark_logits = false;
 
         std::vector<llama_token> draft_tokens;
         struct ggml_tensor * draft_tokens_tensor = nullptr;
@@ -713,7 +697,6 @@ struct llama_context {
         struct ggml_tensor * win_cells  = nullptr; // I32 [ratio*n_win]   member cells of those blocks
         struct ggml_tensor * win_pos    = nullptr; // I32 [4*n_win]       mrope position of those blocks
         struct ggml_tensor * head_w     = nullptr; // F32 [n_idx_h, n_tokens] all ones; the head sum is unweighted
-        struct ggml_tensor * cut_mask   = nullptr;
     };
     std::vector<qsa_input> inp_qsa;
 
@@ -723,12 +706,6 @@ struct llama_context {
 
     // token at each position of a sequence, read by the PLE n-gram hash
     std::map<llama_seq_id, std::vector<llama_token>> ple_hist;
-
-    // per-graph memo of Hadamard-rotated activations (prism.hadamard folded weights):
-    // several folded weights consume the same input activation; rotate it once per graph.
-    // Keyed by content (signs tensor + transform params), not by the per-weight transform
-    // pointer, so weights sharing one rotation reuse a single rotated tensor.
-    std::map<std::tuple<const struct ggml_tensor *, const struct ggml_tensor *, int64_t, int64_t, int64_t, int64_t>, struct ggml_tensor *> hadamard_memo;
 
     struct swa_window_view_state {
         bool active       = false;
@@ -740,12 +717,6 @@ struct llama_context {
         int64_t w_view    = 0;
         int64_t win_off   = 0;
     } swa_window_view;
-
-    // keep slice chosen by the builder for this ubatch, read by the capture row accounting
-    struct dsv41_replay_state {
-        bool    active = false;
-        int64_t keep   = 0;
-    } dsv41_replay;
 
     // multi-head MTP chaining state: head k's output row at the last committed position,
     // written back after each warmup/update decode and fed into the next MTP graph through
