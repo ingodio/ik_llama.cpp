@@ -2,6 +2,7 @@
 #include "../llama-context.h"
 #include "../llama-delta-net.h"
 #include "../llama-model.h"
+#include "../llama-spec-features-dflash.h"
 
 // Score-chunk size for the k-pool indexer: bounds the [n_pool, n_head, Tc] score tensor so it
 // stays under the int32 element-count limit of the RELU kernel and the GPU compute buffer.
@@ -313,6 +314,14 @@ static ggml_tensor * build_glm5next_mla_attention(
     if (lctx.cparams.flash_attn) {
         kqv_cmpr = ggml_flash_attn_ext(ctx0, Qcur, K_cache, K_cache, attn_mask,
                 kq_scale, hparams.f_max_alibi_bias, 0.f);
+        if (top_k) {
+            int n_selected_padded = GGML_PAD(top_k->ne[0], 256);
+            if (n_selected_padded < attn_mask->ne[0]) {
+                auto selected = ggml_mask_to_index(ctx0, attn_mask, n_selected_padded);
+                cb(selected, "mask_to_idx", il);
+                kqv_cmpr->src[5] = selected;
+            }
+        }
         if (K_cache->ne[1] < 256) {
             ggml_flash_attn_ext_set_prec(kqv_cmpr, GGML_PREC_F32);
         }
@@ -656,7 +665,13 @@ ggml_cgraph * llm_build_context::build_glm5next() {
 
         inpL = build_mhc_post(cur, post_ffn, residual_ffn, comb_ffn, n_embd, hc, true);
         inpL = lctx.cvec.apply_to(ctx0, inpL, il);
-        cb(inpL, "l_out", il);
+        if (lctx.dflash.capture && llama_dflash_capture_layer_requested(lctx.dflash.capture->layer_ids, il)) {
+            ggml_tensor * capture = llama_dflash_hc_mean_for_capture(ctx0, inpL, hparams.dsv4_hc_mult);
+            cb(capture, "l_out", il);
+            ggml_build_forward_expand(gf, capture);
+        } else {
+            cb(inpL, "l_out", il);
+        }
     }
 
     // Collapse the mHC streams before the shared output head.

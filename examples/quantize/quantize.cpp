@@ -109,6 +109,7 @@ static const std::vector<struct quant_option> QUANT_OPTIONS = {
     { "Q6_K",     LLAMA_FTYPE_MOSTLY_Q6_K,     " 5.15G, +0.0008 ppl @ LLaMA-v1-7B", },
     { "Q6_K_R4",  LLAMA_FTYPE_MOSTLY_Q6_K_R4,  "Q6_K repacked", },
     { "Q8_K_R8",  LLAMA_FTYPE_MOSTLY_Q8_K_R8,  "Q8_K repacked", },
+    { "Q8_K_R16", LLAMA_FTYPE_MOSTLY_Q8_K_R16, "Q8_K repacked", },
     { "Q8_KV_R8", LLAMA_FTYPE_MOSTLY_Q8_KV_R8, "Q8_KV repacked", },
     { "Q8_0",     LLAMA_FTYPE_MOSTLY_Q8_0,     " 6.70G, +0.0004 ppl @ LLaMA-v1-7B", },
     { "Q4_0_4_4", LLAMA_FTYPE_MOSTLY_Q4_0_4_4, " 4.34G, +0.4685 ppl @ Llama-3-8B",  },
@@ -323,11 +324,16 @@ static int prepare_imatrix(const std::string & imatrix_file,
 
 static ggml_type parse_ggml_type(const char * arg) {
     ggml_type result = GGML_TYPE_COUNT;
+    std::string arg_lower{arg};
+    for (auto & c : arg_lower) c = std::tolower(c);
     for (int j = 0; j < GGML_TYPE_COUNT; ++j) {
         auto type = ggml_type(j);
         const auto * name = ggml_type_name(type);
-        if (name && strcmp(arg, name) == 0) {
-            result = type; break;
+        if (name) {
+            if (strcmp(arg, name) == 0) return type;
+            std::string name_lower{name};
+            for (auto & c : name_lower) c = std::tolower(c);
+            if (name_lower == arg_lower) return type;
         }
     }
     return result;
