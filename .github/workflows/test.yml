@@ -71,7 +71,7 @@ jobs:
         unzip -qo llama-latest-bin-ubuntu-tgl.zip -d /tmp/ || \
         unzip -qo llama-latest-bin-ubuntu-icl.zip -d /tmp/ || \
         unzip -qo llama-latest-bin-ubuntu-zen3.zip -d /tmp/
-        tar --no-overwrite-dir -xf llama-prism-b9596-9fcaed7-bin-ubuntu-x64.tar.gz -C /tmp/ || true
+        #tar --no-overwrite-dir -xf llama-prism-b9596-9fcaed7-bin-ubuntu-x64.tar.gz -C /tmp/ || true
         tar --no-overwrite-dir -xf llama-b12032-bin-ubuntu-x64.tar.gz -C /tmp/ || true
         # rm /tmp/llama-prism-b9596-9fcaed7/libggml-cpu-sapphirerapids.so
         #rm /tmp/llama-prism-b9596-9fcaed7/libggml-cpu-alderlake.so
@@ -89,8 +89,8 @@ jobs:
       run: |
         echo "Testing Llama Latest:"
         /tmp/llama-latest/llama-server --version
-        echo "Testing Llama Prism:"
-        /tmp/llama-prism-b9596-9fcaed7/llama-server --version
+#        echo "Testing Llama Prism:"
+#        /tmp/llama-prism-b9596-9fcaed7/llama-server --version
         
 #    - name: Quantise Model Q4_0
 #      run: |          
