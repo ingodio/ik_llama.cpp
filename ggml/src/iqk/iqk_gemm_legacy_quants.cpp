@@ -2953,6 +2953,21 @@ void iqk_convert_q6_0_r4_q80_r8(int n, const void * vx, size_t bx, void * vy, in
 }
 
 #ifdef HAVE_FANCY_SIMD
+static inline __m128i convert_mxfp4_scales_8(const uint8_t * e) {
+    const auto e8 = _mm_loadl_epi64((const __m128i *)e);
+
+    auto e32 = _mm256_cvtepu8_epi32(e8);
+
+    // e = 0 and e = 1 both produce zero in FP16.
+    e32 = _mm256_max_epu32(e32, _mm256_set1_epi32(2));
+
+    const auto bits = _mm256_slli_epi32(
+        _mm256_sub_epi32(e32, _mm256_set1_epi32(1)), 23);
+
+    return _mm256_cvtps_ph(
+        _mm256_castsi256_ps(bits),
+        _MM_FROUND_TO_NEAREST_INT);
+}
 static void iqk_convert_mxfp4_r8_q80_r16(int n, const void * vx, size_t bx, void * vy, int nrc_x) {
     GGML_ASSERT(n%QK_MXFP4 == 0);
     GGML_ASSERT(nrc_x%16 == 0);
@@ -2965,7 +2980,8 @@ static void iqk_convert_mxfp4_r8_q80_r16(int n, const void * vx, size_t bx, void
                                          (const block_mxfp4_r8 *)((const char *)vx + (ix + 8)*bx) };
         for (int i = 0; i < nb; ++i) {
             for (int h = 0; h < 2; ++h) {
-                for (int k = 0; k < 8; ++k) y[i].d[8*h + k] = GGML_E8M0_TO_FP32_HALF(x8[h][i].e[k]);
+                //for (int k = 0; k < 8; ++k) y[i].d[8*h + k] = GGML_E8M0_TO_FP32_HALF(x8[h][i].e[k]);
+                _mm_storeu_si128((__m128i *)(y[i].d + 8 * h), convert_mxfp4_scales_8(x8[h][i].e));
                 for (int j = 0; j < 4; ++j) {
                     auto v  = _mm256_loadu_si256((const __m256i *)x8[h][i].qs + j);
                     auto lo = _mm256_and_si256(v, m4);
