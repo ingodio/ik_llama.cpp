@@ -2953,6 +2953,7 @@ void iqk_convert_q6_0_r4_q80_r8(int n, const void * vx, size_t bx, void * vy, in
 }
 
 #ifdef HAVE_FANCY_SIMD
+#include "../../../common/log.h"
 static void iqk_convert_mxfp4_r8_q80_r16(
         int n, const void * vx, size_t bx, void * vy, int nrc_x) {
 
@@ -3056,7 +3057,7 @@ static void iqk_convert_mxfp4_r8_q80_r16(
         }
 
 //#ifndef NDEBUG
-        printf(
+        LOG(
             "MXFP4 R8 -> Q8_0 R16: ix=%d, E8M0 e=0: %d, e=1: %d\n",
             ix, count_e0, count_e1);
 //#endif
