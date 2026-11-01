@@ -3056,8 +3056,8 @@ static void iqk_convert_mxfp4_r8_q80_r16(
         }
 
 //#ifndef NDEBUG
-        GGML_ASSERT(count_e0 == 0);
-        GGML_ASSERT(count_e1 == 0);
+        GGML_ASSERT(count_e0 != 0);
+        GGML_ASSERT(count_e1 != 0);
         //fprintf(stderr,
         //    "MXFP4 R8 -> Q8_0 R16: ix=%d, E8M0 e=0: %d, e=1: %d\n",
         //    ix, count_e0, count_e1);
