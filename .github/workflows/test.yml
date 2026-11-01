@@ -29,7 +29,6 @@ jobs:
                 if lscpu | grep -q "PLATINUM 8573C"; then
                     echo "No BF16"
                     echo "Architecture: Emerald Rapids"
-                    exit 1
                 fi
                 echo "Architecture: Ice Lake"
                 #wget -q https://github.com/cora4/ik_llama.cpp/releases/download/tgl-69-????/llama-latest-bin-ubuntu-tgl.zip  -O llama-3.zip
@@ -41,7 +40,6 @@ jobs:
                 else
                     echo "Architecture: Zen 5"
                 fi
-                exit 1
                 # wget -q https://github.com/cora4/ik_llama.cpp/releases/download/zen4-19-14370/llama-latest-bin-ubuntu-zen4.zip
             fi
         fi
