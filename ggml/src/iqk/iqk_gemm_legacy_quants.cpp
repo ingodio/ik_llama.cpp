@@ -2953,7 +2953,6 @@ void iqk_convert_q6_0_r4_q80_r8(int n, const void * vx, size_t bx, void * vy, in
 }
 
 #ifdef HAVE_FANCY_SIMD
-#include <src/llama-impl.h>
 static void iqk_convert_mxfp4_r8_q80_r16(
         int n, const void * vx, size_t bx, void * vy, int nrc_x) {
 
