@@ -8,7 +8,7 @@
 #pragma once
 
 #define LLAMA_API_INTERNAL
-#include "../include/llama.h"
+#include "llama.h"
 #include <stdexcept>
 #include <climits>
 #include <cstdarg>
