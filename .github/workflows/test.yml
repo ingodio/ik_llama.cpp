@@ -6,7 +6,7 @@ on:
 jobs:
   build:
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     steps:
     - name: Hardware Check
@@ -62,7 +62,8 @@ jobs:
         #wget -q https://github.com/cora4/kernel_build_action/releases/download/main-13/qwen3-4B-Q2_0.gguf
         #wget -q https://github.com/cora4/ik_llama.cpp/releases/download/a/qwen3-1.7B-Q2_0.gguf
         #ln -s qwen3-1.7B-Q2_0.gguf qwen3-4B-Q2_0.gguf
-        wget -q https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b9596-9fcaed7/llama-prism-b9596-9fcaed7-bin-ubuntu-x64.tar.gz
+        #wget -q https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b9596-9fcaed7/llama-prism-b9596-9fcaed7-bin-ubuntu-x64.tar.gz
+        wget -q https://github.com/ggml-org/llama.cpp/releases/download/b12032/llama-b12032-bin-ubuntu-x64.tar.gz
     - name: Extract Binaries
       run: |
         unzip -qo llama-latest-bin-ubuntu-spr.zip -d /tmp/ || \
@@ -71,9 +72,10 @@ jobs:
         unzip -qo llama-latest-bin-ubuntu-icl.zip -d /tmp/ || \
         unzip -qo llama-latest-bin-ubuntu-zen3.zip -d /tmp/
         tar --no-overwrite-dir -xf llama-prism-b9596-9fcaed7-bin-ubuntu-x64.tar.gz -C /tmp/ || true
+        tar --no-overwrite-dir -xf llama-b12032-bin-ubuntu-x64.tar.gz -C /tmp/ || true
         # rm /tmp/llama-prism-b9596-9fcaed7/libggml-cpu-sapphirerapids.so
-        rm /tmp/llama-prism-b9596-9fcaed7/libggml-cpu-alderlake.so
-        rm /tmp/llama-prism-b9596-9fcaed7/libggml-cpu-cooperlake.so
+        #rm /tmp/llama-prism-b9596-9fcaed7/libggml-cpu-alderlake.so
+        #rm /tmp/llama-prism-b9596-9fcaed7/libggml-cpu-cooperlake.so
         
     - name: System Information
       run: |
@@ -178,10 +180,10 @@ jobs:
         echo "Benchmarking Quantised Model (Latest):"
         /tmp/2/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_XS.gguf
 
-    - name: Benchmark Models (Prism) IQ4_XS
+    - name: Benchmark Models (GGML-ORG) IQ4_XS
       run: |
-        echo "Benchmarking Quantised Model (Prism):"
-        /tmp/llama-prism-b9596-9fcaed7/llama-bench -m /tmp/qwen3-4B-IQ4_XS.gguf
+        echo "Benchmarking Quantised Model (GGML-ORG):"
+        /tmp/llama-b12032/llama-bench -m /tmp/qwen3-4B-IQ4_XS.gguf
 
 
 #    - name: Benchmark Models (latest) Q4_0
