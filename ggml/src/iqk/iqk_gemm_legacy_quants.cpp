@@ -2983,27 +2983,12 @@ static void iqk_convert_mxfp4_r8_q80_r16(
             (const block_mxfp4_r8 *)((const char *)vx + (ix + 8) * bx)
         };
 
-//#ifndef NDEBUG
-        int count_e0 = 0;
-        int count_e1 = 0;
-//#endif
-
         for (int i = 0; i < nb; ++i) {
 
             // Gather 16 E8M0 exponents.
             const __m128i e = _mm_unpacklo_epi64(
                 _mm_loadl_epi64((const __m128i *)x8[0][i].e),
                 _mm_loadl_epi64((const __m128i *)x8[1][i].e));
-
-//#ifndef NDEBUG
-            // Count the two special E8M0 values.
-            for (int h = 0; h < 2; ++h) {
-                for (int k = 0; k < 8; ++k) {
-                    count_e0 += x8[h][i].e[k] == 0;
-                    count_e1 += x8[h][i].e[k] == 1;
-                }
-            }
-//#endif
 
             // E8M0 / 2 -> FP32.
             const __m512i e32 = _mm512_cvtepu8_epi32(e);
@@ -3012,15 +2997,8 @@ static void iqk_convert_mxfp4_r8_q80_r16(
                 _mm512_sub_epi32(e32, one), 23);
 
             // E8M0 == 0 and E8M0 == 1 special cases.
-            dbits = _mm512_mask_mov_epi32(
-                dbits,
-                _mm512_cmpeq_epi32_mask(e32, zero),
-                e0_bits);
-
-            dbits = _mm512_mask_mov_epi32(
-                dbits,
-                _mm512_cmpeq_epi32_mask(e32, one),
-                e1_bits);
+            //dbits = _mm512_mask_mov_epi32(                dbits,                _mm512_cmpeq_epi32_mask(e32, zero),                e0_bits);
+            //dbits = _mm512_mask_mov_epi32(                dbits,                _mm512_cmpeq_epi32_mask(e32, one),                e1_bits);
 
             _mm512_storeu_ps(y[i].d, _mm512_castsi512_ps(dbits));
 
@@ -3054,15 +3032,6 @@ static void iqk_convert_mxfp4_r8_q80_r16(
                     (void *)(y[i].qs + 64 * (j + 4)), qhi);
             }
         }
-
-//#ifndef NDEBUG
-        GGML_ASSERT(count_e0 != 0);
-        GGML_ASSERT(1 == 0);
-        //fprintf(stderr,
-        //    "MXFP4 R8 -> Q8_0 R16: ix=%d, E8M0 e=0: %d, e=1: %d\n",
-        //    ix, count_e0, count_e1);
-//#endif
-
         y += nb;
     }
 }
