@@ -2953,28 +2953,114 @@ void iqk_convert_q6_0_r4_q80_r8(int n, const void * vx, size_t bx, void * vy, in
 }
 
 #ifdef HAVE_FANCY_SIMD
-static void iqk_convert_mxfp4_r8_q80_r16(int n, const void * vx, size_t bx, void * vy, int nrc_x) {
-    GGML_ASSERT(n%QK_MXFP4 == 0);
-    GGML_ASSERT(nrc_x%16 == 0);
-    const int nb = n/QK_MXFP4;
+static void iqk_convert_mxfp4_r8_q80_r16(
+        int n, const void * vx, size_t bx, void * vy, int nrc_x) {
+
+    GGML_ASSERT(n % QK_MXFP4 == 0);
+    GGML_ASSERT(nrc_x % 16 == 0);
+
+    const int nb = n / QK_MXFP4;
+
     block_q8_0_r16 * y = (block_q8_0_r16 *)vy;
-    const auto m4     = _mm256_set1_epi8(0xf);
-    const auto values = _mm256_xor_si256(load_mxfp4_values_256(), _mm256_set1_epi8(-128));
+
+    const __m512i m4 = _mm512_set1_epi8(0x0f);
+
+    // MXFP4 signed values, biased by 128.
+    const __m512i values = _mm512_xor_si512(
+        _mm512_broadcast_i32x4(load_mxfp4_values_128()),
+        _mm512_set1_epi8(-128));
+
+    const __m512i one = _mm512_set1_epi32(1);
+    const __m512i zero = _mm512_setzero_si512();
+
+    const __m512i e0_bits = _mm512_set1_epi32(0x00200000);
+    const __m512i e1_bits = _mm512_set1_epi32(0x00400000);
+
     for (int ix = 0; ix < nrc_x; ix += 16) {
-        const block_mxfp4_r8 * x8[2] = { (const block_mxfp4_r8 *)((const char *)vx + (ix + 0)*bx),
-                                         (const block_mxfp4_r8 *)((const char *)vx + (ix + 8)*bx) };
+
+        const block_mxfp4_r8 * x8[2] = {
+            (const block_mxfp4_r8 *)((const char *)vx + (ix + 0) * bx),
+            (const block_mxfp4_r8 *)((const char *)vx + (ix + 8) * bx)
+        };
+
+//#ifndef NDEBUG
+        int count_e0 = 0;
+        int count_e1 = 0;
+//#endif
+
         for (int i = 0; i < nb; ++i) {
+
+            // Gather 16 E8M0 exponents.
+            const __m128i e = _mm_unpacklo_epi64(
+                _mm_loadl_epi64((const __m128i *)x8[0][i].e),
+                _mm_loadl_epi64((const __m128i *)x8[1][i].e));
+
+//#ifndef NDEBUG
+            // Count the two special E8M0 values.
             for (int h = 0; h < 2; ++h) {
-                for (int k = 0; k < 8; ++k) y[i].d[8*h + k] = GGML_E8M0_TO_FP32_HALF(x8[h][i].e[k]);
-                for (int j = 0; j < 4; ++j) {
-                    auto v  = _mm256_loadu_si256((const __m256i *)x8[h][i].qs + j);
-                    auto lo = _mm256_and_si256(v, m4);
-                    auto hi = _mm256_and_si256(_mm256_srli_epi16(v, 4), m4);
-                    _mm256_storeu_si256((__m256i *)y[i].qs + 2*j + h,       _mm256_shuffle_epi8(values, lo));
-                    _mm256_storeu_si256((__m256i *)y[i].qs + 2*(j + 4) + h, _mm256_shuffle_epi8(values, hi));
+                for (int k = 0; k < 8; ++k) {
+                    count_e0 += x8[h][i].e[k] == 0;
+                    count_e1 += x8[h][i].e[k] == 1;
                 }
             }
+//#endif
+
+            // E8M0 / 2 -> FP32.
+            const __m512i e32 = _mm512_cvtepu8_epi32(e);
+
+            __m512i dbits = _mm512_slli_epi32(
+                _mm512_sub_epi32(e32, one), 23);
+
+            // E8M0 == 0 and E8M0 == 1 special cases.
+            dbits = _mm512_mask_mov_epi32(
+                dbits,
+                _mm512_cmpeq_epi32_mask(e32, zero),
+                e0_bits);
+
+            dbits = _mm512_mask_mov_epi32(
+                dbits,
+                _mm512_cmpeq_epi32_mask(e32, one),
+                e1_bits);
+
+            _mm512_storeu_ps(y[i].d, _mm512_castsi512_ps(dbits));
+
+            // Expand MXFP4 directly into Q8_0_R16.
+            for (int j = 0; j < 4; ++j) {
+
+                const __m256i v0 = _mm256_loadu_si256(
+                    (const __m256i *)x8[0][i].qs + j);
+
+                const __m256i v1 = _mm256_loadu_si256(
+                    (const __m256i *)x8[1][i].qs + j);
+
+                // Combine the two R8 groups.
+                const __m512i v = _mm512_inserti32x8(
+                    _mm512_castsi256_si512(v0), v1, 1);
+
+                const __m512i lo = _mm512_and_si512(v, m4);
+
+                const __m512i hi = _mm512_and_si512(
+                    _mm512_srli_epi16(v, 4), m4);
+
+                const __m512i qlo = _mm512_shuffle_epi8(values, lo);
+                const __m512i qhi = _mm512_shuffle_epi8(values, hi);
+
+                // Low nibbles.
+                _mm512_storeu_si512(
+                    (void *)(y[i].qs + 64 * j), qlo);
+
+                // High nibbles.
+                _mm512_storeu_si512(
+                    (void *)(y[i].qs + 64 * (j + 4)), qhi);
+            }
         }
+
+//#ifndef NDEBUG
+        fprintf(stderr,
+            "MXFP4 R8 -> Q8_0 R16: ix=%d, E8M0 e=0: %d, e=1: %d\n",
+            ix, count_e0, count_e1);
+//#endif
+
         y += nb;
     }
 }
