@@ -1942,12 +1942,12 @@ static void mul_mat_q8_k_r16_q8_k(int n, const void * vx, size_t bx, const DataI
         }
     }
 #endif
-    __m512  acc[nrc_y] = {};
-    __m512i isum[nrc_y] = {};
-    __m512i isum2[nrc_y] = {};
-    __m512i qx[4];
     for (; ix < nrc_x; ix += 16) {
         const block_q8_k_r16 * iq16 = (const block_q8_k_r16 *)((const char *)vx + ix*bx);
+        __m512  acc[nrc_y] = {};
+        __m512i isum[nrc_y] = {};
+        __m512i isum2[nrc_y] = {};
+        __m512i qx[4];
         for (int ibl = 0; ibl < nbl; ++ibl) { // Block of 256
             auto d4 = _mm512_loadu_ps(iq16[ibl].d);
             _Pragma("GCC unroll 2")
@@ -2001,7 +2001,6 @@ static void mul_mat_q8_k_r16_q8_k(int n, const void * vx, size_t bx, const DataI
         }
         for (int iy = 0; iy < nrc_y; ++iy) {
             info.store(ix, iy, acc[iy]);
-            acc[iy] = _mm512_setzero_ps();
         }
     }
 }
