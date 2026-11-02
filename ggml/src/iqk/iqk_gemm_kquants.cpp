@@ -1999,17 +1999,10 @@ static void mul_mat_q8_k_r16_q8_k(int n, const void * vx, size_t bx, const DataI
             auto d4 = _mm512_loadu_ps(iq16[nbl].d);
             auto m4 = _mm512_mul_ps(d4, _mm512_set1_ps(-128.f));
             for (int iy = 0; iy < nrc_y; ++iy) {
-                auto d4y = _mm512_mul_ps(
-                    d4, _mm512_set1_ps(q8.scale(iy, nbl)));
-                acc[iy] = _mm512_fmadd_ps(
-                    d4y,
-                    _mm512_cvtepi32_ps(
-                        _mm512_add_epi32(isum[iy], isum2[iy])),
-                    acc[iy]);
-                acc[iy] = _mm512_fmadd_ps(
-                    m4,
-                    _mm512_set1_ps(q8.y[iy][nbl].sum),
-                    acc[iy]);
+                auto d4y = _mm512_mul_ps(d4, _mm512_set1_ps(q8.scale(iy, nbl)));
+                acc[iy] = _mm512_fmadd_ps(d4y, _mm512_cvtepi32_ps(
+                        _mm512_add_epi32(isum[iy], isum2[iy])), acc[iy]);
+                acc[iy] = _mm512_fmadd_ps(m4, _mm512_set1_ps(q8.y[iy][nbl].sum), acc[iy]);
                 isum[iy] = isum2[iy] = _mm512_setzero_si512();
             }
         }
