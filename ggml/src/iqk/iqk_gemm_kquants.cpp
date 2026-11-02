@@ -1849,12 +1849,10 @@ static void mul_mat_q8_k_r8_q8_k(int n, const void * vx, size_t bx, const DataIn
 }
 
 #ifdef HAVE_FANCY_SIMD
-#ifndef GGML_CPU_INTEL_CLIENT
-  #ifdef __GNUC__
-  typedef int dpbusd_acc_t __attribute__((vector_size(64)));
-  #else
-  typedef __m512i dpbusd_acc_t;
-  #endif
+#ifdef __GNUC__
+typedef int dpbusd_acc_t __attribute__((vector_size(64)));
+#else
+typedef __m512i dpbusd_acc_t;
 #endif
 template <bool has_tail, int nrc_y>
 static void mul_mat_q8_k_r16_q8_k(int n, const void * vx, size_t bx, const DataInfo& info, int nrc_x) {
@@ -1945,8 +1943,8 @@ static void mul_mat_q8_k_r16_q8_k(int n, const void * vx, size_t bx, const DataI
     for (; ix < nrc_x; ix += 16) {
         const block_q8_k_r16 * iq16 = (const block_q8_k_r16 *)((const char *)vx + ix*bx);
         __m512  acc[nrc_y] = {};
-        __m512i isum[nrc_y] = {};
-        __m512i isum2[nrc_y] = {};
+        dpbusd_acc_t isum[nrc_y] = {};
+        dpbusd_acc_t isum2[nrc_y] = {};
         __m512i qx[4];
         for (int ibl = 0; ibl < nbl; ++ibl) { // Block of 256
             auto d4 = _mm512_loadu_ps(iq16[ibl].d);
@@ -1958,10 +1956,10 @@ static void mul_mat_q8_k_r16_q8_k(int n, const void * vx, size_t bx, const DataI
                 qx[3] = _mm512_loadu_si512((const __m512i *)iq16[ibl].qs+4*ib+3);
                 for (int iy = 0; iy < nrc_y; ++iy) {
                     const int8_t * yb = q8.y[iy][ibl].qs + 16*ib;
-                    isum [iy] = _mm512_dpbusd_epi32(isum [iy], qx[0], _mm512_set1_epi32(*(const int32_t *)(yb +  0)));
-                    isum2[iy] = _mm512_dpbusd_epi32(isum2[iy], qx[1], _mm512_set1_epi32(*(const int32_t *)(yb +  4)));
-                    isum [iy] = _mm512_dpbusd_epi32(isum [iy], qx[2], _mm512_set1_epi32(*(const int32_t *)(yb +  8)));
-                    isum2[iy] = _mm512_dpbusd_epi32(isum2[iy], qx[3], _mm512_set1_epi32(*(const int32_t *)(yb + 12)));
+                    isum [iy] = (dpbusd_acc_t)_mm512_dpbusd_epi32(isum [iy], qx[0], _mm512_set1_epi32(*(const int32_t *)(yb +  0)));
+                    isum2[iy] = (dpbusd_acc_t)_mm512_dpbusd_epi32(isum2[iy], qx[1], _mm512_set1_epi32(*(const int32_t *)(yb +  4)));
+                    isum [iy] = (dpbusd_acc_t)_mm512_dpbusd_epi32(isum [iy], qx[2], _mm512_set1_epi32(*(const int32_t *)(yb +  8)));
+                    isum2[iy] = (dpbusd_acc_t)_mm512_dpbusd_epi32(isum2[iy], qx[3], _mm512_set1_epi32(*(const int32_t *)(yb + 12)));
                 }
             }
             auto m4 = _mm512_mul_ps(d4, _mm512_set1_ps(-128.f));
@@ -1984,10 +1982,10 @@ static void mul_mat_q8_k_r16_q8_k(int n, const void * vx, size_t bx, const DataI
                 qx[3] = _mm512_loadu_si512((const __m512i *)iq16[nbl].qs+4*ib+3);
                 for (int iy = 0; iy < nrc_y; ++iy) {
                     const int8_t * yb = q8.y[iy][nbl].qs + 16*ib;
-                    isum [iy] = _mm512_dpbusd_epi32(isum [iy], qx[0], _mm512_set1_epi32(*(const int32_t *)(yb +  0)));
-                    isum2[iy] = _mm512_dpbusd_epi32(isum2[iy], qx[1], _mm512_set1_epi32(*(const int32_t *)(yb +  4)));
-                    isum [iy] = _mm512_dpbusd_epi32(isum [iy], qx[2], _mm512_set1_epi32(*(const int32_t *)(yb +  8)));
-                    isum2[iy] = _mm512_dpbusd_epi32(isum2[iy], qx[3], _mm512_set1_epi32(*(const int32_t *)(yb + 12)));
+                    isum [iy] = (dpbusd_acc_t)_mm512_dpbusd_epi32(isum [iy], qx[0], _mm512_set1_epi32(*(const int32_t *)(yb +  0)));
+                    isum2[iy] = (dpbusd_acc_t)_mm512_dpbusd_epi32(isum2[iy], qx[1], _mm512_set1_epi32(*(const int32_t *)(yb +  4)));
+                    isum [iy] = (dpbusd_acc_t)_mm512_dpbusd_epi32(isum [iy], qx[2], _mm512_set1_epi32(*(const int32_t *)(yb +  8)));
+                    isum2[iy] = (dpbusd_acc_t)_mm512_dpbusd_epi32(isum2[iy], qx[3], _mm512_set1_epi32(*(const int32_t *)(yb + 12)));
                 }
             }
             auto m4 = _mm512_mul_ps(d4, _mm512_set1_ps(-128.f));
@@ -1995,7 +1993,7 @@ static void mul_mat_q8_k_r16_q8_k(int n, const void * vx, size_t bx, const DataI
                 auto d4y = _mm512_mul_ps(d4, _mm512_set1_ps(q8.scale(iy, nbl)));
                 acc[iy] = _mm512_fmadd_ps(d4y, _mm512_cvtepi32_ps(_mm512_add_epi32(isum[iy], isum2[iy])), acc[iy]);
                 acc[iy] = _mm512_fmadd_ps(m4,  _mm512_set1_ps(q8.y[iy][nbl].sum), acc[iy]);
-                isum[iy] = isum2[iy] = _mm512_setzero_si512();
+                isum[iy] = isum2[iy] = (dpbusd_acc_t)_mm512_setzero_si512();
             }
         }
         }
