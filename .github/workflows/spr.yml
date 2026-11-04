@@ -75,13 +75,13 @@ jobs:
             patchelf --set-rpath '$ORIGIN' $f
           done
           cd build2
-          zip -r9XD /tmp/llama-latest-bin-ubuntu-tgl.zip *
+          zip -r9XD /tmp/llama-latest-bin-ubuntu-spr.zip *
 
 #      - name: Upload Build Artifact
 #        if: ${{ always() && steps.cmake_build.outcome == 'success' }}
 #        uses: actions/upload-artifact@v6
 #        with:
-#          name: llama-latest-bin-ubuntu-tgl
+#          name: llama-latest-bin-ubuntu-spr
 #          path: build2/
       
       - name: Create Release
