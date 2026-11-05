@@ -48,8 +48,8 @@ jobs:
         #wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/icl-2-503/llama-latest-bin-ubuntu-icl.zip
         #wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/icl-1-32243/llama-latest-bin-ubuntu-icl.zip  -O llama-2.zip
 
-        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/spr-3-16435/llama-latest-bin-ubuntu-spr.zip
-        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/spr-4-6675/llama-latest-bin-ubuntu-spr.zip  -O llama-2.zip
+        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/spr-4-6675/llama-latest-bin-ubuntu-spr.zip
+        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/spr-5-12997/llama-latest-bin-ubuntu-spr.zip  -O llama-2.zip
 
         #tar --no-overwrite-dir -xf llama-4.tar.gz -C /tmp/
         unzip -qo llama-2.zip -d /tmp/2/
