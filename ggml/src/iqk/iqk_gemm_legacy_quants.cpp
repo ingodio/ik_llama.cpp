@@ -2159,7 +2159,7 @@ template <int nrc_y>
 static IQK_NOINLINE void q8_0_r16_main(int nb, int nb4, const void * vx, size_t bx, const DataInfo& info, int nrc_x,
         const int32_t * tab, const char * const * yc, const char * yn) {
     int ix = 0;
-#ifndef GGML_CPU_INTEL_CLIENT
+//#ifndef GGML_CPU_INTEL_CLIENT
     for (; ix + 32 <= nrc_x; ix += 32) {
         const block_q8_0_r16 * xba = (const block_q8_0_r16 *)((const char *)vx + (ix +  0)*bx);
         const block_q8_0_r16 * xbb = (const block_q8_0_r16 *)((const char *)vx + (ix + 16)*bx);
@@ -2200,7 +2200,7 @@ static IQK_NOINLINE void q8_0_r16_main(int nb, int nb4, const void * vx, size_t 
             info.store(ix + 16, iy, accb[iy]);
         }
     }
-#endif
+//#endif
     for (; ix < nrc_x; ix += 16) {
         auto xb = (const block_q8_0_r16 *)((const char *)vx + ix*bx);
         __m512  acc[nrc_y];
