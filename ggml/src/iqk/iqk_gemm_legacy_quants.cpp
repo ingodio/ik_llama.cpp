@@ -2158,10 +2158,57 @@ static IQK_NOINLINE void q8_0_r16_fill_tab8(int nb4, const char * const * yc, in
 template <int nrc_y>
 static IQK_NOINLINE void q8_0_r16_main(int nb, int nb4, const void * vx, size_t bx, const DataInfo& info, int nrc_x,
         const int32_t * tab, const char * const * yc, const char * yn) {
-    __m512  acc[nrc_y];
-    __m512i sumi[nrc_y];
-    for (int ix = 0; ix < nrc_x; ix += 16) {
+    int ix = 0;
+#ifndef GGML_CPU_INTEL_CLIENT
+    for (; ix + 32 <= nrc_x; ix += 32) {
+        const block_q8_0_r16 * xba = (const block_q8_0_r16 *)((const char *)vx + (ix +  0)*bx);
+        const block_q8_0_r16 * xbb = (const block_q8_0_r16 *)((const char *)vx + (ix + 16)*bx);
+        __m512  acca[nrc_y] = {};
+        __m512  accb[nrc_y] = {};
+        __m512i suma[nrc_y];
+        __m512i sumb[nrc_y];
+        const int32_t * tb = tab;
+        const char * pf = yn + 144*nb*((ix >> 4) & 1);
+        for (int ib = 0; ib < nb; ++ib) {
+            const int off = ib < nb4 ? 144*(ib >> 2) + 16 + 32*(ib & 3) : 36*ib + 4;
+            if constexpr (nrc_y == 8) {
+                _mm_prefetch(pf + 144*ib, _MM_HINT_T1);
+            }
+            for (int iy = 0; iy < nrc_y; ++iy) {
+                suma[iy] = _mm512_set1_epi32(tb[2*iy+1]);
+                sumb[iy] = suma[iy];
+            }
+            for (int j = 0; j < 8; ++j) {
+                auto qxa = _mm512_loadu_si512((const __m512i *)xba->qs + j);
+                auto qxb = _mm512_loadu_si512((const __m512i *)xbb->qs + j);
+                for (int iy = 0; iy < nrc_y; ++iy) {
+                    auto qy = _mm512_set1_epi32(*(const int32_t *)(yc[iy] + off + 4*j));
+                    suma[iy] = _mm512_dpbusd_epi32(suma[iy], qxa, qy);
+                    sumb[iy] = _mm512_dpbusd_epi32(sumb[iy], qxb, qy);
+                }
+            }
+            auto dxa = _mm512_loadu_ps(xba->d);
+            auto dxb = _mm512_loadu_ps(xbb->d);
+            for (int iy = 0; iy < nrc_y; ++iy) {
+                auto dy = _mm512_set1_ps(*(const float *)(tb + 2*iy));
+                acca[iy] = _mm512_fmadd_ps(_mm512_cvtepi32_ps(suma[iy]),
+                    _mm512_mul_ps(dxa, dy), acca[iy]);
+                accb[iy] = _mm512_fmadd_ps(_mm512_cvtepi32_ps(sumb[iy]),
+                    _mm512_mul_ps(dxb, dy), accb[iy]);
+            }
+            ++xba; ++xbb;
+            tb += 2*nrc_y;
+        }
+        for (int iy = 0; iy < nrc_y; ++iy) {
+            info.store(ix,      iy, acca[iy]);
+            info.store(ix + 16, iy, accb[iy]);
+        }
+    }
+#endif
+    for (; ix < nrc_x; ix += 16) {
         auto xb = (const block_q8_0_r16 *)((const char *)vx + ix*bx);
+        __m512  acc[nrc_y];
+        __m512i sumi[nrc_y];
         const int32_t * tb = tab;
         const char * pf = yn + 144*nb*((ix >> 4) & 1);
         for (int iy = 0; iy < nrc_y; ++iy) acc[iy] = _mm512_setzero_ps();
