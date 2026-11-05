@@ -2168,12 +2168,8 @@ static IQK_NOINLINE void q8_0_r16_main(int nb, int nb4, const void * vx, size_t 
         __m512i suma[nrc_y];
         __m512i sumb[nrc_y];
         const int32_t * tb = tab;
-        const char * pf = yn + 144*nb*((ix >> 4) & 1);
         for (int ib = 0; ib < nb; ++ib) {
             const int off = ib < nb4 ? 144*(ib >> 2) + 16 + 32*(ib & 3) : 36*ib + 4;
-            if constexpr (nrc_y == 8) {
-                _mm_prefetch(pf + 144*ib, _MM_HINT_T1);
-            }
             for (int iy = 0; iy < nrc_y; ++iy) {
                 suma[iy] = _mm512_set1_epi32(tb[2*iy+1]);
                 sumb[iy] = suma[iy];
