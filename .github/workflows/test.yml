@@ -31,12 +31,14 @@ jobs:
                     echo "Architecture: Emerald Rapids"
                 fi
                 echo "Architecture: Ice Lake"
+                exit 1
                 #wget -q https://github.com/cora4/ik_llama.cpp/releases/download/tgl-69-????/llama-latest-bin-ubuntu-tgl.zip  -O llama-3.zip
             fi
         else
             if grep -q "AMD" /proc/cpuinfo; then
                 if lscpu | grep "CPU family"|grep -q 25; then
                     echo "Architecture: Zen 4"
+                    exit 1
                 else
                     echo "Architecture: Zen 5"
                 fi
@@ -47,10 +49,9 @@ jobs:
         #wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/icl-2-503/llama-latest-bin-ubuntu-icl.zip
         #wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/icl-1-32243/llama-latest-bin-ubuntu-icl.zip  -O llama-2.zip
 
-        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/tgl-39-3525/llama-latest-bin-ubuntu-tgl.zip
-        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/tgl-41-32396/llama-latest-bin-ubuntu-tgl.zip  -O llama-2.zip
+        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/spr-3-16435/llama-latest-bin-ubuntu-spr.zip
+        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/spr-4-6675/llama-latest-bin-ubuntu-spr.zip  -O llama-2.zip
 
-        #wget -q https://github.com/ggml-org/llama.cpp/releases/download/b11195/llama-b11195-bin-ubuntu-x64.tar.gz -O llama-4.tar.gz
         #tar --no-overwrite-dir -xf llama-4.tar.gz -C /tmp/
         unzip -qo llama-2.zip -d /tmp/2/
         rm llama-2.zip
@@ -59,10 +60,10 @@ jobs:
     - name: Download Dependencies
       id: dl
       run: |
-        #wget -q https://github.com/cora4/kernel_build_action/releases/download/main-13/qwen3-4B-Q2_0.gguf
+        wget -q https://github.com/cora4/kernel_build_action/releases/download/main-13/qwen3-4B-Q2_0.gguf
         #wget -q https://github.com/cora4/ik_llama.cpp/releases/download/a/qwen3-1.7B-Q2_0.gguf
         #ln -s qwen3-1.7B-Q2_0.gguf qwen3-4B-Q2_0.gguf
-        #wget -q https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b9596-9fcaed7/llama-prism-b9596-9fcaed7-bin-ubuntu-x64.tar.gz
+        wget -q https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b9596-9fcaed7/llama-prism-b9596-9fcaed7-bin-ubuntu-x64.tar.gz
         wget -q https://github.com/ggml-org/llama.cpp/releases/download/b12032/llama-b12032-bin-ubuntu-x64.tar.gz
     - name: Extract Binaries
       run: |
@@ -71,7 +72,7 @@ jobs:
         unzip -qo llama-latest-bin-ubuntu-tgl.zip -d /tmp/ || \
         unzip -qo llama-latest-bin-ubuntu-icl.zip -d /tmp/ || \
         unzip -qo llama-latest-bin-ubuntu-zen3.zip -d /tmp/
-        #tar --no-overwrite-dir -xf llama-prism-b9596-9fcaed7-bin-ubuntu-x64.tar.gz -C /tmp/ || true
+        tar --no-overwrite-dir -xf llama-prism-b9596-9fcaed7-bin-ubuntu-x64.tar.gz -C /tmp/ || true
         tar --no-overwrite-dir -xf llama-b12032-bin-ubuntu-x64.tar.gz -C /tmp/ || true
         # rm /tmp/llama-prism-b9596-9fcaed7/libggml-cpu-sapphirerapids.so
         #rm /tmp/llama-prism-b9596-9fcaed7/libggml-cpu-alderlake.so
@@ -92,14 +93,14 @@ jobs:
 #        echo "Testing Llama Prism:"
 #        /tmp/llama-prism-b9596-9fcaed7/llama-server --version
         
-#    - name: Quantise Model Q4_0
-#      run: |          
-#        /tmp/llama-prism-b9596-9fcaed7/llama-quantize \
-#          --allow-requantize --token-embedding-type Q4_0 \
-#          --tensor-type attn_k=q4_0 --tensor-type attn_q=q4_0 --tensor-type attn_v=q4_0 \
-#          --tensor-type ffn_down=q4_0 --tensor-type ffn_gate=q4_0 --tensor-type ffn_up=q4_0 \
-#          --tensor-type attn_output=q4_0 qwen3-4B-Q2_0.gguf /tmp/qwen3-4B-Q4_0.gguf q4_0
-#        rm qwen3-4B-Q2_0.gguf
+    - name: Quantise Model Q4_0
+      run: |          
+        /tmp/llama-prism-b9596-9fcaed7/llama-quantize \
+          --allow-requantize --token-embedding-type Q4_0 \
+          --tensor-type attn_k=q4_0 --tensor-type attn_q=q4_0 --tensor-type attn_v=q4_0 \
+          --tensor-type ffn_down=q4_0 --tensor-type ffn_gate=q4_0 --tensor-type ffn_up=q4_0 \
+          --tensor-type attn_output=q4_0 qwen3-4B-Q2_0.gguf /tmp/qwen3-4B-Q4_0.gguf q4_0
+        rm qwen3-4B-Q2_0.gguf
         
 #    - name: Quantise Model Q4_K
 #      run: |
@@ -150,9 +151,9 @@ jobs:
 #          --tensor-type ffn_down=iq4_nl --tensor-type ffn_gate=iq4_nl --tensor-type ffn_up=iq4_nl \
 #          --tensor-type attn_output=iq4_nl /tmp/qwen3-4B-Q4_0.gguf /tmp/qwen3-4B-IQ4_NL.gguf iq4_nl
           
-    - name: Quantise Model IQ4_XS
-      run: |
-        wget -q https://github.com/cora4/kernel_build_action/releases/download/main-33/qwen3-4B-IQ4_XS.gguf -O /tmp/qwen3-4B-IQ4_XS.gguf
+#    - name: Quantise Model IQ4_XS
+#      run: |
+#        wget -q https://github.com/cora4/kernel_build_action/releases/download/main-33/qwen3-4B-IQ4_XS.gguf -O /tmp/qwen3-4B-IQ4_XS.gguf
         
 #        /tmp/llama-prism-b9596-9fcaed7/llama-quantize \
 #          --allow-requantize --token-embedding-type iq4_xs \
@@ -170,20 +171,24 @@ jobs:
 #          --tensor-type attn_output=mxfp4 /tmp/qwen3-4B-Q4_0.gguf /tmp/qwen3-4B-MXFP4.gguf 38
 
 
-    - name: Benchmark Models (latest) IQ4_XS (-rtr 1)
+    - name: Benchmark Models (latest) Q4_0 (-rtr 1)
       run: |
         echo "Benchmarking Quantised Model (Latest):"
-        /tmp/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_XS.gguf
+        /tmp/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-Q4_0.gguf
 
-    - name: Benchmark Models (latest) IQ4_XS (-rtr 1) (Ver 2.0)
+    - name: Benchmark Models (latest) Q4_0 (-rtr 1) (Ver 2.0)
       run: |
         echo "Benchmarking Quantised Model (Latest):"
-        /tmp/2/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_XS.gguf
+        /tmp/2/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-Q4_0.gguf
 
-    - name: Benchmark Models (GGML-ORG) IQ4_XS
+    - name: Benchmark Models (GGML-ORG) Q4_0
       run: |
         echo "Benchmarking Quantised Model (GGML-ORG):"
-        /tmp/llama-b12032/llama-bench -m /tmp/qwen3-4B-IQ4_XS.gguf
+        /tmp/llama-b12032/llama-bench -m /tmp/qwen3-4B-Q4_0.gguf
+        rm /tmp/llama-b12032/libggml-cpu-sapphirerapids.so
+        rm /tmp/llama-b12032/libggml-cpu-alderlake.so
+        echo "Cooper Lake version"
+        /tmp/llama-b12032/llama-bench -m /tmp/qwen3-4B-Q4_0.gguf
 
 
 #    - name: Benchmark Models (latest) Q4_0
@@ -201,7 +206,6 @@ jobs:
 #        echo "Benchmarking Quantised Model (Prism):"
 #        /tmp/llama-prism-b9596-9fcaed7/llama-bench -m /tmp/qwen3-4B-Q4_0.gguf
 
-
 #    - name: Benchmark Models (latest) IQ4_NL
 #      run: |
 #        echo "Benchmarking Quantised Model (Latest):"
@@ -211,7 +215,6 @@ jobs:
 #      run: |
 #        echo "Benchmarking Quantised Model (Latest):"
 #        /tmp/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-IQ4_NL.gguf
-
 
     #- name: Benchmark Models (Prism) IQ4_NL
     #  run: |
