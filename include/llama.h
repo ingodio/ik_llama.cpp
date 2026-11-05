@@ -256,6 +256,7 @@ extern "C" {
         LLAMA_FTYPE_MOSTLY_IQ5_KS_R16    = 348, // except 1d tensors (16-row interleaved iq3ks-class codebook 3-bit)
         LLAMA_FTYPE_MOSTLY_IQ5_KS_R4     = 350, // except 1d tensors
         LLAMA_FTYPE_MOSTLY_MXFP4_R8      = 351, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q2_0_R8       = 352, // except 1d tensors
         LLAMA_FTYPE_MOSTLY_Q8_K_R16      = 397, // except 1d tensors
         LLAMA_FTYPE_MOSTLY_Q8_KV_R8      = 398, // except 1d tensors
         LLAMA_FTYPE_MOSTLY_Q8_K_R8       = 399, // except 1d tensors
@@ -313,7 +314,8 @@ extern "C" {
 
     typedef struct llama_ckpt_data {
         enum llama_ckpt_type type;
-        llama_pos pos;
+        llama_pos pos1;
+        llama_pos pos2;
     } llama_ckpt_data;
 
     typedef struct llama_token_data {
@@ -952,6 +954,8 @@ extern "C" {
     LLAMA_API bool llama_rewind_ckpt_discard(struct llama_context * ctx, llama_ckpt_data ckpt_type, llama_seq_id seq_id);
 
     LLAMA_API bool llama_rewind_ckpt_release(struct llama_context * ctx, llama_ckpt_data ckpt_type, llama_seq_id seq_id);
+
+    LLAMA_API llama_pos llama_rewind_ckpt_pos(struct llama_context * ctx, llama_ckpt_data ckpt_type, llama_seq_id seq_id);
 
 
     // Restore the recurrent state after speculative decode.
