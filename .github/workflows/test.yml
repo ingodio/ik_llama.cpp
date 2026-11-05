@@ -39,7 +39,6 @@ jobs:
             if grep -q "AMD" /proc/cpuinfo; then
                 if lscpu | grep "CPU family"|grep -q 25; then
                     echo "Architecture: Zen 4"
-                    exit 1
                 else
                     echo "Architecture: Zen 5"
                 fi
