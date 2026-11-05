@@ -24,15 +24,16 @@ jobs:
                 else
                     echo "Architecture: Emerald Rapids"
                 fi
-                #wget -q https://github.com/cora4/ik_llama.cpp/releases/download/spr-28-25/llama-latest-bin-ubuntu-spr.zip -O llama-2.zip
+                wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/spr-4-6675/llama-latest-bin-ubuntu-spr.zip
+                wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/spr-6-9961/llama-latest-bin-ubuntu-spr.zip  -O llama-2.zip
             else
                 if lscpu | grep -q "PLATINUM 8573C"; then
                     echo "No BF16"
                     echo "Architecture: Emerald Rapids"
                 fi
                 echo "Architecture: Ice Lake"
-                exit 1
-                #wget -q https://github.com/cora4/ik_llama.cpp/releases/download/tgl-69-????/llama-latest-bin-ubuntu-tgl.zip  -O llama-3.zip
+                wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/tgl-50-15007/llama-latest-bin-ubuntu-tgl.zip
+                wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/tgl-51-5403/llama-latest-bin-ubuntu-tgl.zip  -O llama-2.zip
             fi
         else
             if grep -q "AMD" /proc/cpuinfo; then
@@ -41,16 +42,12 @@ jobs:
                 else
                     echo "Architecture: Zen 5"
                 fi
-                exit 1
-                # wget -q https://github.com/cora4/ik_llama.cpp/releases/download/zen4-19-14370/llama-latest-bin-ubuntu-zen4.zip
+                wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/tgl-50-15007/llama-latest-bin-ubuntu-tgl.zip
+                wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/tgl-51-5403/llama-latest-bin-ubuntu-tgl.zip  -O llama-2.zip
             fi
         fi
         #wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/icl-2-503/llama-latest-bin-ubuntu-icl.zip
         #wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/icl-1-32243/llama-latest-bin-ubuntu-icl.zip  -O llama-2.zip
-
-        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/spr-4-6675/llama-latest-bin-ubuntu-spr.zip
-        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/spr-6-9961/llama-latest-bin-ubuntu-spr.zip  -O llama-2.zip
-
         #tar --no-overwrite-dir -xf llama-4.tar.gz -C /tmp/
         unzip -qo llama-2.zip -d /tmp/2/
         rm llama-2.zip
