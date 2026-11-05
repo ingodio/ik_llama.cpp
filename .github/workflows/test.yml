@@ -63,7 +63,8 @@ jobs:
         #wget -q https://github.com/cora4/ik_llama.cpp/releases/download/a/qwen3-1.7B-Q2_0.gguf
         #ln -s qwen3-1.7B-Q2_0.gguf qwen3-4B-Q2_0.gguf
         wget -q https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b9596-9fcaed7/llama-prism-b9596-9fcaed7-bin-ubuntu-x64.tar.gz
-        wget -q https://github.com/ggml-org/llama.cpp/releases/download/b12032/llama-b12032-bin-ubuntu-x64.tar.gz
+        # wget -q https://github.com/ggml-org/llama.cpp/releases/download/b12032/llama-b12032-bin-ubuntu-x64.tar.gz
+        wget -q https://github.com/ingodio/ik_llama.cpp/releases/download/tgl-50-15007/llama-aizip-x86-q80-88-b11840-2747056-bin-ubuntu-x86.tar.gz
     - name: Extract Binaries
       run: |
         unzip -qo llama-latest-bin-ubuntu-spr.zip -d /tmp/ || \
@@ -72,7 +73,7 @@ jobs:
         unzip -qo llama-latest-bin-ubuntu-icl.zip -d /tmp/ || \
         unzip -qo llama-latest-bin-ubuntu-zen3.zip -d /tmp/
         tar --no-overwrite-dir -xf llama-prism-b9596-9fcaed7-bin-ubuntu-x64.tar.gz -C /tmp/ || true
-        tar --no-overwrite-dir -xf llama-b12032-bin-ubuntu-x64.tar.gz -C /tmp/ || true
+        tar --no-overwrite-dir -xf llama-aizip-x86-q80-88-b11840-2747056-bin-ubuntu-x86.tar.gz -C /tmp/ || true
         # rm /tmp/llama-prism-b9596-9fcaed7/libggml-cpu-sapphirerapids.so
         #rm /tmp/llama-prism-b9596-9fcaed7/libggml-cpu-alderlake.so
         #rm /tmp/llama-prism-b9596-9fcaed7/libggml-cpu-cooperlake.so
@@ -180,14 +181,14 @@ jobs:
         echo "Benchmarking Quantised Model (Latest):"
         /tmp/2/llama-latest/llama-bench -rtr 1 -m /tmp/qwen3-4B-Q4_0.gguf
 
-    - name: Benchmark Models (GGML-ORG) Q4_0
+    - name: Benchmark Models (GGML-ORG) fork Q4_0
       run: |
         echo "Benchmarking Quantised Model (GGML-ORG):"
-        /tmp/llama-b12032/llama-bench -m /tmp/qwen3-4B-Q4_0.gguf
-        rm /tmp/llama-b12032/libggml-cpu-sapphirerapids.so
-        rm /tmp/llama-b12032/libggml-cpu-alderlake.so
+        /tmp/llama-aizip-x86-q80-88-b11840-2747056/llama-bench -m /tmp/qwen3-4B-Q4_0.gguf
+        rm /tmp/llama-aizip-x86-q80-88-b11840-2747056/libggml-cpu-sapphirerapids.so
+        rm /tmp/llama-aizip-x86-q80-88-b11840-2747056/libggml-cpu-alderlake.so
         echo "Cooper Lake version"
-        /tmp/llama-b12032/llama-bench -m /tmp/qwen3-4B-Q4_0.gguf
+        /tmp/llama-aizip-x86-q80-88-b11840-2747056/llama-bench -m /tmp/qwen3-4B-Q4_0.gguf
 
 
 #    - name: Benchmark Models (latest) Q4_0
