@@ -1001,6 +1001,10 @@ void llm_load_hparams(
                 ml.get_key(LLM_KV_EXPERT_SHARED_COUNT,         hparams.n_expert_shared, false);
                 ml.get_key(LLM_KV_EXPERT_WEIGHTS_SCALE,        hparams.expert_weights_scale, false);
                 ml.get_key(LLM_KV_EXPERT_WEIGHTS_NORM,         hparams.expert_weights_norm, false);
+                ml.get_key(LLM_KV_EXPERT_GATING_FUNC,          hparams.expert_gating_func, false);
+                if (hparams.expert_gating_func == LLM_EXPERT_GATING_FUNC_TYPE_NONE) {
+                    hparams.expert_gating_func = LLM_EXPERT_GATING_FUNC_SOFTMAX;
+                }
                 ml.get_key(LLM_KV_LEADING_DENSE_BLOCK_COUNT,   hparams.n_layer_dense_lead, false);
                 ml.get_key(LLM_KV_HYPER_CONNECTION_COUNT,      hparams.dsv4_hc_mult);
                 ml.get_key(LLM_KV_HYPER_CONNECTION_SINKHORN_ITERATIONS, hparams.dsv4_hc_sinkhorn_iters, false);
@@ -2652,7 +2656,7 @@ void llm_load_hparams(
                                     __func__, hparams.dsv41_replay_boundary - 1, hparams.dsv41_replay_boundary, hparams.n_layer - 1);
                         }
                     }
-                    if (std::getenv("V41_SEPARATE") != nullptr) {
+                    if (hparams.is_v41_separate()) {
                         {
                             uint32_t src = 0;
                             if (ml.get_key(LLM_KV_CANDIDATE_SOURCE_LAYER, src, false)) {
@@ -2883,6 +2887,26 @@ void llm_load_hparams(
                     default: model.type = e_model::MODEL_UNKNOWN;
                 }
             } break;
+        case LLM_ARCH_RICURSIVE:
+            {
+                ml.get_key(LLM_KV_ATTENTION_LAYERNORM_RMS_EPS, hparams.f_norm_rms_eps);
+                ml.get_key(LLM_KV_ATTENTION_SLIDING_WINDOW,    hparams.n_swa);
+                ml.get_key(LLM_KV_EMBEDDING_SCALE,             hparams.f_embedding_scale, false);
+                ml.get_key_or_arr(LLM_KV_ATTENTION_SLIDING_WINDOW_PATTERN, hparams.swa_layers, hparams.n_layer);
+
+                for (uint32_t il = 0; il < hparams.n_layer; ++il) {
+                    hparams.rope_pattern[il] = hparams.swa_layers[il];
+                }
+
+                hparams.swiglu_limits.fill(0.0f);
+                ml.get_key_or_arr(LLM_KV_SWIGLU_CLAMP, hparams.swiglu_limits, hparams.n_layer, false);
+                hparams.swiglu_limits_shared = hparams.swiglu_limits;
+
+                switch (hparams.n_layer) {
+                    case 80: model.type = e_model::MODEL_65B; break;
+                    default: model.type = e_model::MODEL_UNKNOWN;
+                }
+            } break;
         case LLM_ARCH_MUSE_GLIMMER:
             {
                 ml.get_key(LLM_KV_ATTENTION_LAYERNORM_RMS_EPS, hparams.f_norm_rms_eps);
@@ -2925,4 +2949,14 @@ void llm_load_hparams(
     hparams.use_qnext_state_layout = llm_arch_uses_qnext_state_layout(model.arch);
 
     hparams.rope_type = llama_rope_type(&model);
+}
+
+bool llama_hparams::is_v41_separate() {
+    static const bool is_separate = [] () -> bool {
+        if (auto env = std::getenv("V41_SEPARATE"); env != nullptr && env[0] == '0') {
+            return false;
+        }
+        return true;
+    }();
+    return is_separate;
 }
