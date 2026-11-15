@@ -2282,7 +2282,7 @@ static IQK_NOINLINE void q8_0_r16_main(int nb, int nb4, const void * vx, size_t 
             info.store(ix + 16, iy, accb[iy]);
         }
     }
-#endif
+#else
     for (; ix < nrc_x; ix += 16) {
         auto xb = (const block_q8_0_r16 *)((const char *)vx + ix*bx);
         __m512  acc[nrc_y];
@@ -2309,6 +2309,7 @@ static IQK_NOINLINE void q8_0_r16_main(int nb, int nb4, const void * vx, size_t 
         }
         for (int iy = 0; iy < nrc_y; ++iy) info.store(ix, iy, acc[iy]);
     }
+#endif
 }
 template <int nrc_y>
 static void mul_mat_q8_0_r16_q8_2(int n, const void * vx, size_t bx, const DataInfo& info, int nrc_x) {
@@ -2505,6 +2506,29 @@ static void mul_mat_iq4_ks_r16_q8_2(int n, const void * vx, size_t bx, const Dat
                 acc[iy] = _mm512_fmadd_ps(_mm512_mul_ps(d4, _mm512_set1_ps(q8.scale(iy, ibl))), _mm512_cvtepi32_ps(sumi[iy]), acc[iy]);
                 sumi[iy] = _mm512_setzero_si512();
             }
+        }
+        if (int nb0 = 8*(nb/8); nb0 < nb) {
+            int nbtail = nb - nb0;
+            for (int k = 0; k < nbtail; ++k) {
+                prepare_block(iq4[nb0+k], iscales, imins);
+                _Pragma("GCC unroll 8")
+                for (int iy = 0; iy < nrc_y; ++iy) {
+                    auto & by = q8.y[iy][nb/8];
+                    auto isum = qx_r8_q8_dot_product(qx, by.qs+32*k);
+                    auto bsums = (const int16_t *)(by.qs + 32*nbtail);
+                    isum = _mm512_dpwssd_epi32(isum, imins, _mm512_set1_epi16(bsums[2*k]+bsums[2*k+1]));
+                    sumi[iy] = _mm512_add_epi32(sumi[iy], _mm512_mullo_epi32(isum, iscales));
+                }
+            }
+            _Pragma("GCC unroll 8")
+            for (int iy = 0; iy < nrc_y; ++iy) {
+                acc[iy] = _mm512_fmadd_ps(_mm512_mul_ps(d4, _mm512_set1_ps(q8.scale(iy, nb/8))), _mm512_cvtepi32_ps(sumi[iy]), acc[iy]);
+                sumi[iy] = _mm512_setzero_si512();
+            }
+        }
+        for (int iy = 0; iy < nrc_y; ++iy) {
+            info.store(ix, iy, acc[iy]);
+            acc[iy] = _mm512_setzero_ps();
         }
     }
 }
