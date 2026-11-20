@@ -87,8 +87,10 @@ option(GGML_AVX512      "ggml: enable AVX512"           OFF)
 option(GGML_AVX512_VBMI "ggml: enable AVX512-VBMI"      OFF)
 option(GGML_AVX512_VNNI "ggml: enable AVX512-VNNI"      OFF)
 option(GGML_AVX512_BF16 "ggml: enable AVX512-BF16"      OFF)
-option(GGML_FMA         "ggml: enable FMA"              ${GGML_AVX2})
-option(GGML_F16C        "ggml: enable F16C"             ${INS_ENB})
+option(GGML_FMA         "ggml: enable FMA"              ${INS_ENB})
+if (NOT MSVC)
+    option(GGML_F16C    "ggml: enable F16C"             ${INS_ENB}) # in MSVC F16C is implied with AVX2/AVX512
+endif()
 
 option(GGML_LASX        "ggml: enable lasx"             ON)
 option(GGML_LSX         "ggml: enable lsx"              ON)
