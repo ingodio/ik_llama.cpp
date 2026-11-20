@@ -11,15 +11,13 @@
 
 #include "iqk_config.h"
 
-// needed by the popcount() helpers below, which live outside the
-// IQK_IMPLEMENT block
-
 #if defined IQK_IMPLEMENT
 
-#include <cstdint>
 #include <cstring>
 #include <type_traits>
 #include <vector>
+#include <cstdint>
+
 
 #include "ggml-impl.h"
 #include "ggml-quants.h"
@@ -81,8 +79,10 @@ struct Perf {
 };
 #endif
 
-#ifdef __AVX2__
+#ifdef __AVX__
 #define MM256_SET_M128I(a, b) _mm256_insertf128_si256(_mm256_castsi128_si256(b), (a), 1)
+
+#ifdef __AVX2__
 #define MM256_SET1_M128I(x)   _mm256_broadcastsi128_si256(x)
 #endif
 
@@ -222,14 +222,10 @@ const uint64_t keven_signs[128] = {
 };
 
 #ifdef __AVX__
-#define MM256_SET_M128I(a, b) _mm256_insertf128_si256(_mm256_castsi128_si256(b), (a), 1)
 static inline float hsum_float_4(__m128 x) {
     x = _mm_add_ps(x, _mm_movehl_ps(x, x));
     x = _mm_add_ss(x, _mm_movehdup_ps(x));
     return _mm_cvtss_f32(x);
-}
-static inline float hsum_float_8(__m256 x) {
-    return hsum_float_4(_mm_add_ps(_mm256_castps256_ps128(x), _mm256_extractf128_ps(x, 1)));
 }
 static inline float hmax_float_8(__m256 x) {
     __m128 max4 = _mm_max_ps(_mm256_extractf128_ps(x, 1), _mm256_castps256_ps128(x));
@@ -346,7 +342,8 @@ template <int nrc> struct Q8_16 {
     const int8_t * y[nrc_y];
 };
 
-#define MM256_SET_M128I(a, b) _mm256_insertf128_si256(_mm256_castsi128_si256(b), (a), 1)
+#endif //AVX2
+#ifdef __AVX__
 struct Scales8KBase {
     template <typename Q8>
     inline void accum_mins(const __m128i& mins128, const Q8& q8, int i, float c, __m256 * accd) const {
@@ -358,12 +355,11 @@ struct Scales8KBase {
             const __m256 scale = _mm256_set1_ps(c * q8.scale(iy, i));
             const __m256 vals = _mm256_cvtepi32_ps(prod);
             accd[iy] = _mm256_add_ps(_mm256_mul_ps(scale, vals), accd[iy]);
-            #ifdef __FMA__
+#ifdef __FMA__
             accd[iy] = _mm256_fmadd_ps(scale, vals, accd[iy]);
-            #else
+#else
             accd[iy] = _mm256_add_ps(_mm256_mul_ps(scale, vals), accd[iy]);
-            #endif
-//            accd[iy] = _mm256_fmadd_ps(_mm256_set1_ps(c*q8.scale(iy, i)), _mm256_cvtepi32_ps(prod), accd[iy]);
+#endif
         }
     }
     inline __m256i shuffle(__m128i mins) const {
@@ -398,7 +394,7 @@ struct BaseDequantizer {
 
     float d;
 };
-
+#endif
 template <typename Q8, typename Bits>
 static inline void multiply_add(const Bits& bits, const __m256i * scales, int j, int i, const Q8& q8, __m256i * sumi) {
     if (j == 0) {
@@ -643,13 +639,11 @@ static inline float convert_to_q8_k_r8(int k, float d0, const __m256i * qx, cons
 #else
 // ------------------------------------ __aarch64__ --------------------------------------------------
 
-#ifdef __AVX__
-//#include "NEON_2_SSE.h"
+#ifdef __AVX__ // wonderful
+#define __aarch64__
 #define SIMDE_ENABLE_NATIVE_ALIASES
 #include "simde/arm/neon.h"
-//typedef _Float16 float16_t;
-//using float16_t = __fp16;
-#define __aarch64__
+
 #define ggml_vdotq_s32(a, b, c) vdotq_s32(a, b, c)
 #define vdotq_laneq_s32(acc, a, b, lane) \
     vdotq_laneq_s32_impl<lane>(acc, a, b)
@@ -674,46 +668,7 @@ static inline int32x4_t vdotq_laneq_s32_impl(
     const __m128i dot = _mm_hadd_epi32(lo, hi);
     return _mm_add_epi32(acc, dot);
 }
-#define MM256_SET_M128I(a, b) _mm256_insertf128_si256(_mm256_castsi128_si256(b), (a), 1)
-struct Scales8KBase {
-    template <typename Q8>
-    inline void accum_mins(const __m128i& mins128, const Q8& q8, int i, float c, __m256 * accd) const {
-        const __m256i mins = MM256_SET_M128I(_mm_shuffle_epi8(mins128, shuffles[1]), _mm_shuffle_epi8(mins128, shuffles[0]));
-        for (int iy = 0; iy < Q8::nrc_y; ++iy) {
-            const __m256i q8s = q8.load_bsums(iy, i);
-#ifdef __FMA__
-            const __m256i prod = _mm256_madd_epi16(mins, q8s);
-#else
-            const __m128i mins_lo = _mm256_castsi256_si128(mins);
-            const __m128i mins_hi = _mm256_extracti128_si256(mins, 1);
-            const __m128i q8s_lo  = _mm256_castsi256_si128(q8s);
-            const __m128i q8s_hi  = _mm256_extracti128_si256(q8s, 1);
-
-            const __m128i prod_lo = _mm_madd_epi16(mins_lo, q8s_lo);
-            const __m128i prod_hi = _mm_madd_epi16(mins_hi, q8s_hi);
-
-            const __m256i prod = _mm256_insertf128_si256(
-                _mm256_castsi128_si256(prod_lo), prod_hi, 1
-            );
 #endif
-            const __m256 scale = _mm256_set1_ps(c * q8.scale(iy, i));
-            const __m256 vals = _mm256_cvtepi32_ps(prod);
-#ifdef __FMA__
-            accd[iy] = _mm256_fmadd_ps(scale, vals, accd[iy]);
-#else
-            accd[iy] = _mm256_add_ps(_mm256_mul_ps(scale, vals), accd[iy]);
-#endif
-//            accd[iy] = _mm256_fmadd_ps(_mm256_set1_ps(c*q8.scale(iy, i)), _mm256_cvtepi32_ps(prod), accd[iy]);
-        }
-    }
-    inline __m256i shuffle(__m128i mins) const {
-        return MM256_SET_M128I(_mm_shuffle_epi8(mins, shuffles[1]), _mm_shuffle_epi8(mins, shuffles[0]));
-    }
-    const __m128i shuffles[2] = {_mm_set_epi32(0x07060706, 0x05040504, 0x03020302, 0x01000100),
-                                 _mm_set_epi32(0x0f0e0f0e, 0x0d0c0d0c, 0x0b0a0b0a, 0x09080908)};
-};
-#endif
-
 
 template <int nrc, typename block_q8 = block_q8_K> struct Q8 {
 
@@ -970,8 +925,6 @@ static IQK_ALWAYS_INLINE int32x4_t interleaved_dotq(const int8x16_t * qx, const 
     sumi = vdotq_laneq_s32(sumi, qx[7], y.val[1], 3);
     return sumi;
 }
-
-
 
 static IQK_ALWAYS_INLINE int32x4x2_t interleaved_dotq_b16(const int8x16_t * qx, const int8x16x2_t& y) {
     int32x4x2_t sumi = { vdupq_n_s32(0), vdupq_n_s32(0) };
