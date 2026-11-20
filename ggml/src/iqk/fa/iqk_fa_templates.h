@@ -274,6 +274,7 @@ struct HelperQ80 final : public BaseHelper {
     constexpr static int block_size_q = QK8_0;
 #endif
     HelperQ80(const char * data, int stride) : Base(data, stride) {}
+
     // Needed for v * softmax(k * q)
 #if defined(__AVX__) && !defined(__AVX512F__)
     inline void load(int l1, int i, __m256& v1, __m256& v2) const {
@@ -285,6 +286,12 @@ struct HelperQ80 final : public BaseHelper {
         int j = F16::block_size*i;
         auto dl = (const block_q8_0 *)Base::lblock(l1) + j/QK8_0;
         auto vd = F16::set1(GGML_FP16_TO_FP32(dl->d));
+  #if defined(__aarch64__)
+        int ii = j%QK8_0;
+        auto qs = vld1_s8_x2(dl->qs + ii);
+        v1 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[0])));
+        v2 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[1])));
+  #endif
 #endif
 #if defined __AVX512F__
         v1 = _mm512_mul_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(_mm_loadu_si128((const __m128i *)dl->qs+0))));
@@ -307,11 +314,6 @@ struct HelperQ80 final : public BaseHelper {
     __m128 f2_hi = _mm_cvtepi32_ps(_mm_cvtepi16_epi32(_mm_unpackhi_epi8(q2, s2)));
     v1 = _mm256_mul_ps(vd, _mm256_insertf128_ps(_mm256_castps128_ps256(f1), f1_hi, 1));
     v2 = _mm256_mul_ps(vd, _mm256_insertf128_ps(_mm256_castps128_ps256(f2), f2_hi, 1));
-#elif defined __aarch64__
-        int ii = j%QK8_0;
-        auto qs = vld1_s8_x2(dl->qs + ii);
-        v1 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[0])));
-        v2 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[1])));
 #endif
     }
 
