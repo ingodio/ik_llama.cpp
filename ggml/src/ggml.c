@@ -7917,9 +7917,7 @@ struct ggml_tensor * ggml_mul_mat_id(
 }
 
 #if !GGML_USE_IQK_MULMAT
-// Without IQK the fused MOE_FUSED_UP_GATE op has no compute path, so
-// ggml_moe_up_gate / ggml_moe_up_gate_ext express the same computation with
-// mul_mat_id + add_id + fused_mul_unary instead.
+// NOT TESTED
 static struct ggml_tensor * ggml_moe_up_gate_fallback(
             struct ggml_context * ctx,
             struct ggml_tensor  * as_up,
@@ -24891,9 +24889,11 @@ static int ggml_compute_forward(struct ggml_compute_params * params, struct ggml
             } break;
         case GGML_OP_SOFT_MAX:
             {
-    #if GGML_USE_IQK_MULMAT
-            if (fusion && i + 4 < cgraph->n_nodes &&
-                    cgraph->nodes[i+1]->op == GGML_OP_RESHAPE  &&
+#if GGML_USE_IQK_MULMAT
+        case GGML_OP_SOFT_MAX:
+            {
+#if GGML_USE_IQK_MULMAT
+                cgraph->nodes[i+1]->op == GGML_OP_RESHAPE  &&
                     cgraph->nodes[i+2]->op == GGML_OP_ARGSORT  &&
                     cgraph->nodes[i+3]->op == GGML_OP_VIEW     &&
                     cgraph->nodes[i+4]->op == GGML_OP_GET_ROWS &&
@@ -24904,11 +24904,9 @@ static int ggml_compute_forward(struct ggml_compute_params * params, struct ggml
                             (const float *)cgraph->nodes[i]->data, (float *)cgraph->nodes[i+4]->data, (int32_t *)cgraph->nodes[i+3]->data,
                             params->ith, params->nth);
                     i += 4;
-                } else
+#else
+                    ggml_compute_forward_soft_max(params, tensor);
 #endif
-            {
-                ggml_compute_forward_soft_max(params, tensor);
-            }
             } break;
         case GGML_OP_SOFT_MAX_BACK:
             {
