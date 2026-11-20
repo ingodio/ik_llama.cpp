@@ -13,10 +13,10 @@
 
 // needed by the popcount() helpers below, which live outside the
 // IQK_IMPLEMENT block
-#include <cstdint>
 
 #if defined IQK_IMPLEMENT
 
+#include <cstdint>
 #include <cstring>
 #include <type_traits>
 #include <vector>
@@ -221,10 +221,8 @@ const uint64_t keven_signs[128] = {
     0xffffffffffff0101, 0x01ffffffffff01ff, 0x01ffffffffffff01, 0xffffffffffffffff,
 };
 
-#ifdef __AVX2__
-
+#ifdef __AVX__
 #define MM256_SET_M128I(a, b) _mm256_insertf128_si256(_mm256_castsi128_si256(b), (a), 1)
-
 static inline float hsum_float_4(__m128 x) {
     x = _mm_add_ps(x, _mm_movehl_ps(x, x));
     x = _mm_add_ss(x, _mm_movehdup_ps(x));
@@ -233,6 +231,14 @@ static inline float hsum_float_4(__m128 x) {
 static inline float hsum_float_8(__m256 x) {
     return hsum_float_4(_mm_add_ps(_mm256_castps256_ps128(x), _mm256_extractf128_ps(x, 1)));
 }
+static inline float hmax_float_8(__m256 x) {
+    __m128 max4 = _mm_max_ps(_mm256_extractf128_ps(x, 1), _mm256_castps256_ps128(x));
+    max4 = _mm_max_ps( max4, _mm_movehl_ps(max4, max4));
+    max4 = _mm_max_ss( max4, _mm_movehdup_ps( max4));
+    return  _mm_cvtss_f32(max4);
+}
+#endif
+#ifdef __AVX2__
 static inline int hsum_i32_8(const __m256i a) {
     const __m128i sum128 = _mm_add_epi32(_mm256_castsi256_si128(a), _mm256_extractf128_si256(a, 1));
     const __m128i hi64 = _mm_unpackhi_epi64(sum128, sum128);
@@ -244,12 +250,6 @@ static inline float hmax_f32_8(__m256 x) {
     __m128 max4 = _mm_max_ps(_mm256_extractf128_ps(x, 1), _mm256_castps256_ps128(x));
     max4 = _mm_max_ps(max4, _mm_movehl_ps(max4, max4));
     max4 = _mm_max_ss(max4, _mm_movehdup_ps(max4));
-    return  _mm_cvtss_f32(max4);
-}
-static inline float hmax_float_8(__m256 x) {
-    __m128 max4 = _mm_max_ps(_mm256_extractf128_ps(x, 1), _mm256_castps256_ps128(x));
-    max4 = _mm_max_ps( max4, _mm_movehl_ps(max4, max4));
-    max4 = _mm_max_ss( max4, _mm_movehdup_ps( max4));
     return  _mm_cvtss_f32(max4);
 }
 static inline float hmin_float_8(__m256 x) {
@@ -346,6 +346,7 @@ template <int nrc> struct Q8_16 {
     const int8_t * y[nrc_y];
 };
 
+#define MM256_SET_M128I(a, b) _mm256_insertf128_si256(_mm256_castsi128_si256(b), (a), 1)
 struct Scales8KBase {
     template <typename Q8>
     inline void accum_mins(const __m128i& mins128, const Q8& q8, int i, float c, __m256 * accd) const {
@@ -353,7 +354,16 @@ struct Scales8KBase {
         for (int iy = 0; iy < Q8::nrc_y; ++iy) {
             const __m256i q8s = q8.load_bsums(iy, i);
             const __m256i prod = _mm256_madd_epi16(mins, q8s);
-            accd[iy] = _mm256_fmadd_ps(_mm256_set1_ps(c*q8.scale(iy, i)), _mm256_cvtepi32_ps(prod), accd[iy]);
+
+            const __m256 scale = _mm256_set1_ps(c * q8.scale(iy, i));
+            const __m256 vals = _mm256_cvtepi32_ps(prod);
+            accd[iy] = _mm256_add_ps(_mm256_mul_ps(scale, vals), accd[iy]);
+            #ifdef __FMA__
+            accd[iy] = _mm256_fmadd_ps(scale, vals, accd[iy]);
+            #else
+            accd[iy] = _mm256_add_ps(_mm256_mul_ps(scale, vals), accd[iy]);
+            #endif
+//            accd[iy] = _mm256_fmadd_ps(_mm256_set1_ps(c*q8.scale(iy, i)), _mm256_cvtepi32_ps(prod), accd[iy]);
         }
     }
     inline __m256i shuffle(__m128i mins) const {
@@ -633,6 +643,55 @@ static inline float convert_to_q8_k_r8(int k, float d0, const __m256i * qx, cons
 #else
 // ------------------------------------ __aarch64__ --------------------------------------------------
 
+#ifdef __AVX__
+#include "NEON_2_SSE.h"
+//typedef _Float16 float16_t;
+#define __aarch64__
+#define ggml_vdotq_s32(a, b, c) vdotq_s32(a, b, c)
+using float16_t = __fp16;
+#define vdotq_laneq_s32(acc, a, b, lane) \
+    vdotq_laneq_s32_impl<lane>(acc, a, b)
+#define MM256_SET_M128I(a, b) _mm256_insertf128_si256(_mm256_castsi128_si256(b), (a), 1)
+struct Scales8KBase {
+    template <typename Q8>
+    inline void accum_mins(const __m128i& mins128, const Q8& q8, int i, float c, __m256 * accd) const {
+        const __m256i mins = MM256_SET_M128I(_mm_shuffle_epi8(mins128, shuffles[1]), _mm_shuffle_epi8(mins128, shuffles[0]));
+        for (int iy = 0; iy < Q8::nrc_y; ++iy) {
+            const __m256i q8s = q8.load_bsums(iy, i);
+#ifdef __FMA__
+            const __m256i prod = _mm256_madd_epi16(mins, q8s);
+#else
+            const __m128i mins_lo = _mm256_castsi256_si128(mins);
+            const __m128i mins_hi = _mm256_extracti128_si256(mins, 1);
+            const __m128i q8s_lo  = _mm256_castsi256_si128(q8s);
+            const __m128i q8s_hi  = _mm256_extracti128_si256(q8s, 1);
+
+            const __m128i prod_lo = _mm_madd_epi16(mins_lo, q8s_lo);
+            const __m128i prod_hi = _mm_madd_epi16(mins_hi, q8s_hi);
+
+            const __m256i prod = _mm256_insertf128_si256(
+                _mm256_castsi128_si256(prod_lo), prod_hi, 1
+            );
+#endif
+            const __m256 scale = _mm256_set1_ps(c * q8.scale(iy, i));
+            const __m256 vals = _mm256_cvtepi32_ps(prod);
+#ifdef __FMA__
+            accd[iy] = _mm256_fmadd_ps(scale, vals, accd[iy]);
+#else
+            accd[iy] = _mm256_add_ps(_mm256_mul_ps(scale, vals), accd[iy]);
+#endif
+//            accd[iy] = _mm256_fmadd_ps(_mm256_set1_ps(c*q8.scale(iy, i)), _mm256_cvtepi32_ps(prod), accd[iy]);
+        }
+    }
+    inline __m256i shuffle(__m128i mins) const {
+        return MM256_SET_M128I(_mm_shuffle_epi8(mins, shuffles[1]), _mm_shuffle_epi8(mins, shuffles[0]));
+    }
+    const __m128i shuffles[2] = {_mm_set_epi32(0x07060706, 0x05040504, 0x03020302, 0x01000100),
+                                 _mm_set_epi32(0x0f0e0f0e, 0x0d0c0d0c, 0x0b0a0b0a, 0x09080908)};
+};
+#endif
+
+
 template <int nrc, typename block_q8 = block_q8_K> struct Q8 {
 
     constexpr static int nrc_y = nrc;
@@ -910,6 +969,41 @@ static IQK_ALWAYS_INLINE int32x4_t interleaved_dotq(const int8x16_t * qx, const 
     sumi = vdotq_laneq_s32(sumi, qx[3], y, 3);
     return sumi;
 }
+#ifdef __AVXN__
+template<int Lane>
+static inline int32x4_t dotq_laneq_s32_sse(int32x4_t acc, int8x16_t a, int8x16_t b) {
+    static_assert(Lane >= 0 && Lane < 4, "Invalid lane");
+    const __m128i zero = _mm_setzero_si128();
+    // Broadcast selected 32-bit lane.
+    const __m128i bl = _mm_shuffle_epi32(
+        b, _MM_SHUFFLE(Lane, Lane, Lane, Lane));
+    // Sign-extend bytes to 16-bit.
+    const __m128i asign = _mm_cmpgt_epi8(zero, a);
+    const __m128i bsign = _mm_cmpgt_epi8(zero, bl);
+    const __m128i alo = _mm_unpacklo_epi8(a, asign);
+    const __m128i ahi = _mm_unpackhi_epi8(a, asign);
+    const __m128i blo = _mm_unpacklo_epi8(bl, bsign);
+    const __m128i bhi = _mm_unpackhi_epi8(bl, bsign);
+    // Four pairs of signed 16-bit products.
+    const __m128i lo = _mm_madd_epi16(alo, blo);
+    const __m128i hi = _mm_madd_epi16(ahi, bhi);
+    // Horizontal sums: four groups of four bytes.
+    const __m128i dot = _mm_hadd_epi32(lo, hi);
+    return _mm_add_epi32(acc, dot);
+}
+
+static inline int32x4_t interleaved_dotq(const int8x16_t* qx, const int8x16_t& y)
+{
+    auto sumi = vdupq_n_s32(0);
+
+    sumi = dotq_laneq_s32_sse<0>(sumi, qx[0], y);
+    sumi = dotq_laneq_s32_sse<1>(sumi, qx[1], y);
+    sumi = dotq_laneq_s32_sse<2>(sumi, qx[2], y);
+    sumi = dotq_laneq_s32_sse<3>(sumi, qx[3], y);
+
+    return sumi;
+}
+#endif
 
 static IQK_ALWAYS_INLINE void prepare_iq4_nl_quants(const int8x16_t& values, const uint8x16_t& m4, const uint8x16x4_t& bits, int8x16_t * qx) {
     qx[0] = vqtbl1q_s8(values, vandq_u8(bits.val[0], m4));   //  0...3 from the 4 rows

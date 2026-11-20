@@ -7,7 +7,7 @@
 #define GGML_COMMON_IMPL_C
 #include "ggml-common.h"
 
-#ifdef __x86_64__
+#ifdef __AVX2__
 
 namespace {
 

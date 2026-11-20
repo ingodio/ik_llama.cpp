@@ -7,7 +7,7 @@
 #define GGML_COMMON_IMPL_C
 #include "ggml-common.h"
 
-#ifdef __x86_64__
+#if defined(__AVX2__)
 
 namespace {
 
@@ -95,6 +95,43 @@ struct QFBase {
     template <typename Float>
     static inline Data load4Floats(const Float * x) {
         return _mm256_insertf128_ps(_mm256_setzero_ps(), load128(x), 0);
+    }
+#endif
+#if defined(__AVX__)
+//TODO
+static inline __m256 FMADD_PS(__m256 a, __m256 b, __m256 c) {
+  #if defined(__FMA__)
+    return _mm256_fmadd_ps(a, b, c);
+  #else
+    return _mm256_add_ps(_mm256_mul_ps(a, b), c);
+  #endif
+}
+    constexpr static int k_step = 8;
+    using Data = __m256;
+    using Acc  = __m256;
+    static inline Data load(const ggml_bf16_t * x) {
+        const __m128i v = _mm_loadu_si128((const __m128i *) x);
+        const __m128i zero = _mm_setzero_si128();
+
+        const __m128i lo = _mm_slli_epi32(
+            _mm_unpacklo_epi16(v, zero), 16);
+
+        const __m128i hi = _mm_slli_epi32(
+            _mm_unpackhi_epi16(v, zero), 16);
+
+        return _mm256_castsi256_ps(
+            _mm256_insertf128_si256(
+                _mm256_castsi128_si256(lo), hi, 1));
+    }
+    static inline Acc acc(Acc prev, const __m256& y, const __m256& x) {
+        return FMADD_PS(y, x, prev);
+    }
+    static inline Acc acc_r4(Acc acc, const Data * xv, const Data& yv) {
+        acc = FMADD_PS(xv[0], _mm256_shuffle_ps(yv, yv, 0x00), acc);
+        acc = FMADD_PS(xv[1], _mm256_shuffle_ps(yv, yv, 0x55), acc);
+        acc = FMADD_PS(xv[2], _mm256_shuffle_ps(yv, yv, 0xaa), acc);
+        acc = FMADD_PS(xv[3], _mm256_shuffle_ps(yv, yv, 0xff), acc);
+        return acc;
     }
 #endif
     static inline __m128 load128(const ggml_half * x) { return _mm_cvtph_ps(_mm_loadl_epi64((const __m128i *)x)); }
@@ -608,7 +645,7 @@ void set_mul_mat_bf16_r16(std::array<mul_mat_t, IQK_MAX_NY>& funcs) {
 bool iqk_set_kernels_float(int ne00, int typeA, int typeB, std::array<mul_mat_t, IQK_MAX_NY>& kernels) {
 
     if (typeA == GGML_TYPE_BF16) {
-        if (ne00 % 8) return false;
+        if (ne00 % 8 || ne00 < QFBase::k_step) return false;
         switch (typeB) {
 #ifdef __AVX512BF16__
             case GGML_TYPE_BF16: {
@@ -639,7 +676,7 @@ bool iqk_set_kernels_float(int ne00, int typeA, int typeB, std::array<mul_mat_t,
     }
 
     if (typeA == GGML_TYPE_F16 || typeA == GGML_TYPE_F32) {
-        if (ne00 % 4) return false;
+        if (ne00 % 4 || ne00 < QFBase::k_step) return false;
     }
     if (typeA == GGML_TYPE_F16) {
         switch (typeB) {
@@ -733,7 +770,20 @@ struct QF16Base {
     using Data = float16x8_t;
     using Acc  = float16x8_t;
     static inline Data load(const __fp16 * x) { return vld1q_f16(x); }
+#if !defined(__AVX__)
     static inline Data load4(const __fp16 * x) { return vcombine_f16(vld1_f16(x), vdup_n_f16(0)); }
+#else
+    static inline Data load4(const __fp16 *x)
+    {
+        float16x8_t result;
+        result.val[0] = _mm_set_ps(
+            (float)x[3], (float)x[2],
+            (float)x[1], (float)x[0]
+        );
+        result.val[1] = _mm_setzero_ps();
+        return result;
+    }
+#endif
     static inline Acc acc(Acc prev, const Data& y, const Data& x) {
         return vfmaq_f16(prev, y, x);
     }

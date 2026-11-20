@@ -99,23 +99,79 @@ struct F16 {
     static inline Data fmadd_lane1(Data prev, Data v1, Data v2) { return _mm512_fmadd_ps(v1, _mm512_shuffle_ps(v2, v2, 0x55), prev); }
     static inline Data fmadd_lane2(Data prev, Data v1, Data v2) { return _mm512_fmadd_ps(v1, _mm512_shuffle_ps(v2, v2, 0xaa), prev); }
     static inline Data fmadd_lane3(Data prev, Data v1, Data v2) { return _mm512_fmadd_ps(v1, _mm512_shuffle_ps(v2, v2, 0xff), prev); }
-#elif defined __AVX2__
+#elif defined(__AVX3__)
     using Data = __m256;
     constexpr static int block_size = 8;
     constexpr static int num_registers = 16;
     constexpr static int q_step = 8;
-    static inline Data zero() { return _mm256_setzero_ps(); }
-    static inline Data load(const char * ptr, int i) { return _mm256_cvtph_ps(_mm_loadu_si128((const __m128i *)ptr + i)); }
-    static inline Data set1(float val) { return _mm256_set1_ps(val); }
-    static inline Data mul(Data v1, Data v2) { return _mm256_mul_ps(v1, v2); }
-    static inline Data load(const float * ptr) { return _mm256_loadu_ps(ptr); }
-    static inline Data sub(Data v1, Data v2) { return _mm256_sub_ps(v1, v2); }
-    static inline void store(float * ptr, Data data) { _mm256_storeu_ps(ptr, data); }
-    static inline Data fmadd(Data prev, Data v1, Data v2) { return _mm256_fmadd_ps(v1, v2, prev); }
-    static inline float reduce_max(Data data) { return hmax_float_8(data); }
-    static inline float reduce_add(Data data) { return hsum_float_8(data); }
-    static inline Data max(Data v1, Data v2) { return _mm256_max_ps(v1, v2); }
-    static inline Data add(Data v1, Data v2) { return _mm256_add_ps(v1, v2); }
+    static inline Data zero() {
+        return _mm256_setzero_ps();
+    }
+//    static inline Data load(const char * ptr, int i) {
+//        return _mm256_cvtph_ps(
+//            _mm_loadu_si128((const __m128i *)ptr + i)
+//        );
+//    }
+    static inline Data load(const char * ptr, int i) {
+        const __fp16 * p =
+            reinterpret_cast<const __fp16 *>(ptr) + block_size * i;
+
+        __m128 lo = _mm_set_ps(
+            (float)p[3], (float)p[2],
+            (float)p[1], (float)p[0]);
+
+        __m128 hi = _mm_set_ps(
+            (float)p[7], (float)p[6],
+            (float)p[5], (float)p[4]);
+
+        return _mm256_set_m128(hi, lo);
+    }
+//    using Data = float16x8_t;
+//    static inline Data load(const char * ptr, int i) {
+//        return vld1q_f16(
+//            (const float16_t *)ptr + block_size*i);
+//    }
+//    static inline Data load(const float16_t * ptr, int i) {
+//        return vld1q_f16(ptr + block_size*i);
+//    }
+//    static inline Data load(const float16_t * ptr) { return vld1q_f16(ptr); }
+//    static inline Data load(const float * ptr) {
+//        auto val1 = vld1q_f32(ptr);
+//.        auto val2 = vld1q_f32(ptr+4);
+//        return vcombine_f16(vcvt_f16_f32(val1), vcvt_f16_f32(val2));
+//    }
+    static inline Data set1(float val) {
+        return _mm256_set1_ps(val);
+    }
+    static inline Data mul(Data v1, Data v2) {
+        return _mm256_mul_ps(v1, v2);
+    }
+    static inline Data load(const float * ptr) {
+        return _mm256_loadu_ps(ptr);
+    }
+    static inline Data sub(Data v1, Data v2) {
+        return _mm256_sub_ps(v1, v2);
+    }
+    static inline void store(float * ptr, Data data) {
+        _mm256_storeu_ps(ptr, data);
+    }
+    // No FMA
+    static inline Data fmadd(Data prev, Data v1, Data v2) {
+        return _mm256_add_ps(_mm256_mul_ps(v1, v2), prev);
+    }
+    static inline float reduce_max(Data data) {
+        return hmax_float_8(data);
+    }
+    static inline float reduce_add(Data data) {
+        return hsum_float_8(data);
+    }
+    static inline Data max(Data v1, Data v2) {
+        return _mm256_max_ps(v1, v2);
+    }
+
+    static inline Data add(Data v1, Data v2) {
+        return _mm256_add_ps(v1, v2);
+    }
     static inline Data set4(const float * ptr) {
         auto v128 = _mm_loadu_ps(ptr);
         return _mm256_set_m128(v128, v128);
@@ -127,10 +183,22 @@ struct F16 {
         vs[2] = _mm256_shuffle_ps(v, v, 0xaa);
         vs[3] = _mm256_shuffle_ps(v, v, 0xff);
     }
-    static inline Data fmadd_lane0(Data prev, Data v1, Data v2) { return _mm256_fmadd_ps(v1, _mm256_shuffle_ps(v2, v2, 0x00), prev); }
-    static inline Data fmadd_lane1(Data prev, Data v1, Data v2) { return _mm256_fmadd_ps(v1, _mm256_shuffle_ps(v2, v2, 0x55), prev); }
-    static inline Data fmadd_lane2(Data prev, Data v1, Data v2) { return _mm256_fmadd_ps(v1, _mm256_shuffle_ps(v2, v2, 0xaa), prev); }
-    static inline Data fmadd_lane3(Data prev, Data v1, Data v2) { return _mm256_fmadd_ps(v1, _mm256_shuffle_ps(v2, v2, 0xff), prev); }
+    static inline Data fmadd_lane0(Data prev, Data v1, Data v2) {
+        return _mm256_add_ps(
+            _mm256_mul_ps(v1, _mm256_shuffle_ps(v2, v2, 0x00)), prev);
+    }
+    static inline Data fmadd_lane1(Data prev, Data v1, Data v2) {
+        return _mm256_add_ps(
+            _mm256_mul_ps(v1, _mm256_shuffle_ps(v2, v2, 0x55)), prev);
+    }
+    static inline Data fmadd_lane2(Data prev, Data v1, Data v2) {
+        return _mm256_add_ps(
+            _mm256_mul_ps(v1, _mm256_shuffle_ps(v2, v2, 0xaa)), prev);
+    }
+    static inline Data fmadd_lane3(Data prev, Data v1, Data v2) {
+        return _mm256_add_ps(
+            _mm256_mul_ps(v1, _mm256_shuffle_ps(v2, v2, 0xff)), prev);
+    }
 #else
     using Data = float16x8_t;
     constexpr static int block_size = 8;
@@ -138,6 +206,19 @@ struct F16 {
     //constexpr static int q_step = 8;
     static inline Data zero() { return vdupq_n_f16(0); }
     static inline Data load(const char * ptr, int i) { return vld1q_f16((const float16_t *)ptr + block_size*i); }
+    static inline __m256 load_avx1(const char * ptr, int i) {
+        const __fp16 * p =
+            reinterpret_cast<const __fp16 *>(ptr) + block_size * i;
+        __m128 lo = _mm_set_ps(
+            (float)p[3], (float)p[2],
+            (float)p[1], (float)p[0]);
+        __m128 hi = _mm_set_ps(
+            (float)p[7], (float)p[6],
+            (float)p[5], (float)p[4]);
+        return _mm256_set_m128(hi, lo);
+//        return _mm256_insertf128_ps(
+//            _mm256_castps128_ps256(lo), hi, 1);
+    }
     static inline Data load(const float16_t * ptr, int i) { return vld1q_f16(ptr + block_size*i); }
     static inline Data load(const float16_t * ptr) { return vld1q_f16(ptr); }
     static inline Data load(const float * ptr) {
@@ -198,7 +279,6 @@ struct F16 {
 struct HelperF16 final : public BaseHelper {
     using Base = BaseHelper;
     HelperF16(const char * data, int stride) : Base(data, stride) {}
-
     inline void load(int l1, int i, F16::Data& v1, F16::Data& v2) const {
         //auto dr = (const ggml_half *)Base::lblock(l1);
         auto dr = Base::lblock(l1);
@@ -224,20 +304,42 @@ struct HelperQ8KV final : public BaseHelper {
     // Needed for v * softmax(k * q)
     inline void load(int l1, int i, F16::Data& v1, F16::Data& v2) const {
         auto q8 = (const block_q8_KV<D> *)Base::lblock(l1);
-#ifdef __aarch64__
-        auto vd = F16::set1(q8->d);
-        auto qs = vld1_s8_x2(q8->qs + 8*i);
-        v1 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[0])));
-        v2 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[1])));
-#else
         auto vd = F16::set1(q8->d);
 #ifdef __AVX512F__
         v1 = _mm512_mul_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(_mm_loadu_si128((const __m128i *)q8->qs+i+0))));
         v2 = _mm512_mul_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(_mm_loadu_si128((const __m128i *)q8->qs+i+1))));
-#else
+#elif defined  __AVX2__
         v1 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_loadl_epi64((const __m128i *)(q8->qs+8*i+0)))));
         v2 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_loadl_epi64((const __m128i *)(q8->qs+8*i+8)))));
-#endif
+/*
+#elif defined __AVX__
+        __m128i q1 = _mm_loadl_epi64(
+            (const __m128i *)(q8->qs + 8*i));
+        __m128i q2 = _mm_loadl_epi64(
+            (const __m128i *)(q8->qs + 8*i + 8));
+        // Sign-extend int8 -> int16 -> int32
+        __m128i s1 = _mm_cmpgt_epi8(_mm_setzero_si128(), q1);
+        __m128i s2 = _mm_cmpgt_epi8(_mm_setzero_si128(), q2);
+        __m128i w1 = _mm_unpacklo_epi8(q1, s1);
+        __m128i w2 = _mm_unpacklo_epi8(q2, s2);
+        __m128i a1 = _mm_cvtepi16_epi32(w1);
+        __m128i a2 = _mm_cvtepi16_epi32(w2);
+        __m128 f1 = _mm_cvtepi32_ps(a1);
+        __m128 f2 = _mm_cvtepi32_ps(a2);
+        // Combine 4 + 4 floats into 8 floats
+        __m128i q1_hi = _mm_unpackhi_epi8(q1, s1);
+        __m128i q2_hi = _mm_unpackhi_epi8(q2, s2);
+        __m128 f1_hi = _mm_cvtepi32_ps(_mm_cvtepi16_epi32(q1_hi));
+        __m128 f2_hi = _mm_cvtepi32_ps(_mm_cvtepi16_epi32(q2_hi));
+        v1 = _mm256_mul_ps(vd, _mm256_insertf128_ps(
+            _mm256_castps128_ps256(f1), f1_hi, 1));
+        v2 = _mm256_mul_ps(vd, _mm256_insertf128_ps(
+            _mm256_castps128_ps256(f2), f2_hi, 1));
+*/
+#elif defined __aarch64__
+        auto qs = vld1_s8_x2(q8->qs + 8*i);
+        v1 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[0])));
+        v2 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[1])));
 #endif
     }
 };
@@ -254,27 +356,61 @@ struct HelperQ80 final : public BaseHelper {
     constexpr static int block_size_q = QK8_0;
 #endif
     HelperQ80(const char * data, int stride) : Base(data, stride) {}
-
     // Needed for v * softmax(k * q)
+//#if defined(__AVX__) && !defined(__AVX2__)
+//    inline void load_avx1(int l1, int i, __m256& v1, __m256& v2) const {
+//        int j = F16::block_size*i;
+//        auto dl = (const block_q8_0 *)Base::lblock(l1) + j/QK8_0;
+//        __m256 vd = _mm256_set1_ps(GGML_FP16_TO_FP32(dl->d));
+//#else
     inline void load(int l1, int i, F16::Data& v1, F16::Data& v2) const {
+//#endif
         int j = F16::block_size*i;
         auto dl = (const block_q8_0 *)Base::lblock(l1) + j/QK8_0;
-#ifdef __aarch64__
         auto vd = F16::set1(GGML_FP16_TO_FP32(dl->d));
+#ifdef __aarch64__
         int ii = j%QK8_0;
-        auto qs = vld1_s8_x2(dl->qs + ii);
+//        auto qs = vld1_s8_x2(dl->qs + ii);
+        int8x8x2_t qs = {{
+            vld1_s8(dl->qs + ii),
+            vld1_s8(dl->qs + ii + 8)
+        }};
         v1 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[0])));
         v2 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[1])));
 #else
-        auto vd = F16::set1(GGML_FP16_TO_FP32(dl->d));
+#endif
 #ifdef __AVX512F__
         v1 = _mm512_mul_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(_mm_loadu_si128((const __m128i *)dl->qs+0))));
         v2 = _mm512_mul_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(_mm_loadu_si128((const __m128i *)dl->qs+1))));
-#else
+#elif defined __AVX2__
         int ii = j%QK8_0;
         v1 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_loadl_epi64((const __m128i *)(dl->qs+ii+0)))));
         v2 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_loadl_epi64((const __m128i *)(dl->qs+ii+8)))));
-#endif
+/*
+#elif defined __AVX__
+    int ii = j % QK8_0;
+    __m128i q1 = _mm_loadl_epi64(
+        (const __m128i *)(dl->qs + ii));
+    __m128i q2 = _mm_loadl_epi64(
+        (const __m128i *)(dl->qs + ii + 8));
+    // Sign-extend int8 -> int16
+    __m128i s1 = _mm_cmpgt_epi8(_mm_setzero_si128(), q1);
+    __m128i s2 = _mm_cmpgt_epi8(_mm_setzero_si128(), q2);
+    __m128i w1 = _mm_unpacklo_epi8(q1, s1);
+    __m128i w2 = _mm_unpacklo_epi8(q2, s2);
+    // Convert int16 -> int32 -> float
+    __m128 f1 = _mm_cvtepi32_ps(_mm_cvtepi16_epi32(w1));
+    __m128 f1_hi = _mm_cvtepi32_ps(
+        _mm_cvtepi16_epi32(_mm_unpackhi_epi8(q1, s1)));
+    __m128 f2 = _mm_cvtepi32_ps(_mm_cvtepi16_epi32(w2));
+    __m128 f2_hi = _mm_cvtepi32_ps(
+        _mm_cvtepi16_epi32(_mm_unpackhi_epi8(q2, s2)));
+    // Assemble 8 floats per vector
+    v1 = _mm256_mul_ps(vd, _mm256_insertf128_ps(
+        _mm256_castps128_ps256(f1), f1_hi, 1));
+    v2 = _mm256_mul_ps(vd, _mm256_insertf128_ps(
+        _mm256_castps128_ps256(f2), f2_hi, 1));
+*/
 #endif
     }
 
@@ -518,11 +654,16 @@ struct HelperQ8KVR8 : public BaseHelper {
                 vst1q_s8_x2(y[ix].qs + 64 + 128*ib, m2);
                 vst1q_s8_x2(y[ix].qs + 96 + 128*ib, m3);
 #else
-                // TODO
+                // Scalar fallback
                 for (int l = 0; l < 4; ++l) {
-                    for (int k = 0; k < 8; ++k) for (int i = 0; i < 4; ++i) {
-                        y[ib].qs[32*l+4*k+i+  0] = x8[k][ib].qs[i+4*l+ 0];
-                        y[ib].qs[32*l+4*k+i+128] = x8[k][ib].qs[i+4*l+16];
+                    for (int k = 0; k < 8; ++k) {
+                        for (int i = 0; i < 4; ++i) {
+                            y[ix].qs[32*l + 4*k + i] =
+                                x8[k][16*ib + 4*l + i];
+
+                            y[ix].qs[32*l + 4*k + i + 128] =
+                                x8[k][16*ib + 4*l + 16 + i];
+                        }
                     }
                 }
 #endif
@@ -550,27 +691,27 @@ struct HelperQ40 final : public BaseHelper {
     inline void load(int l1, int i, F16::Data& v1, F16::Data& v2) const {
         int j = F16::block_size*i;
         auto dl = (const block_q4_0 *)Base::lblock(l1) + j/QK4_0;
-#ifdef __aarch64__
+#if __AVX2__
+        auto vd = F16::set1(GGML_FP16_TO_FP32(dl->d));
+        auto q  = _mm_loadu_si128((const __m128i *)dl->qs);
+#endif
+#ifdef __AVX512F__
+        auto ql = _mm_add_epi8(_mm_and_si128(q, mask), m8);
+        auto qh = _mm_add_epi8(_mm_and_si128(_mm_srli_epi16(q, 4), mask), m8);
+        v1 = _mm512_mul_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(ql)));
+        v2 = _mm512_mul_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(qh)));
+#elif __AVX2__
+        if (j%QK4_0) q = _mm_srli_epi16(q, 4);
+        auto q16 = _mm256_cvtepi8_epi16(_mm_add_epi8(_mm_and_si128(q, mask), m8));
+        v1 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(_mm256_castsi256_si128(q16))));
+        v2 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(_mm256_extracti128_si256(q16, 1))));
+#else
         auto vd = F16::set1(*(const float16_t *)&dl->d);
         auto q  = vld1q_u8(dl->qs);
         q = j%QK4_0 ? vshrq_n_u8(q, 4) : vandq_u8(q, mask);
         q = vaddq_s8(q, m8);
         v1 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(vget_low_s8(q))));
         v2 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(vget_high_s8(q))));
-#else
-        auto vd = F16::set1(GGML_FP16_TO_FP32(dl->d));
-        auto q  = _mm_loadu_si128((const __m128i *)dl->qs);
-#ifdef __AVX512F__
-        auto ql = _mm_add_epi8(_mm_and_si128(q, mask), m8);
-        auto qh = _mm_add_epi8(_mm_and_si128(_mm_srli_epi16(q, 4), mask), m8);
-        v1 = _mm512_mul_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(ql)));
-        v2 = _mm512_mul_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(qh)));
-#else
-        if (j%QK4_0) q = _mm_srli_epi16(q, 4);
-        auto q16 = _mm256_cvtepi8_epi16(_mm_add_epi8(_mm_and_si128(q, mask), m8));
-        v1 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(_mm256_castsi256_si128(q16))));
-        v2 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(_mm256_extracti128_si256(q16, 1))));
-#endif
 #endif
     }
 
@@ -594,28 +735,28 @@ struct HelperQ41 final : public BaseHelper {
     inline void load(int l1, int i, F16::Data& v1, F16::Data& v2) const {
         int j = F16::block_size*i;
         auto dl = (const block_q4_1 *)Base::lblock(l1) + j/QK4_1;
-#ifdef __aarch64__
+#ifdef __AVX2__
+        auto vd = F16::set1(GGML_FP16_TO_FP32(dl->d));
+        auto vm = F16::set1(GGML_FP16_TO_FP32(dl->m));
+        auto q  = _mm_loadu_si128((const __m128i *)dl->qs);
+#endif
+#ifdef __AVX512F__
+        auto ql = _mm_and_si128(q, mask);
+        auto qh = _mm_and_si128(_mm_srli_epi16(q, 4), mask);
+        v1 = _mm512_fmadd_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(ql)), vm);
+        v2 = _mm512_fmadd_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(qh)), vm);
+#elif __AVX2__
+        if (j%QK4_1) q = _mm_srli_epi16(q, 4);
+        auto q16 = _mm256_cvtepi8_epi16(_mm_and_si128(q, mask));
+        v1 = _mm256_fmadd_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(_mm256_castsi256_si128(q16))), vm);
+        v2 = _mm256_fmadd_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(_mm256_extracti128_si256(q16, 1))), vm);
+#else
         auto vd = F16::set1(*(const float16_t *)&dl->d);
         auto vm = F16::set1(*(const float16_t *)&dl->m);
         auto q  = vld1q_u8(dl->qs);
         q = (j%QK4_1) ? vshrq_n_u8(q, 4) : vandq_u8(q, mask);
         v1 = vfmaq_f16(vm, vd, vcvtq_f16_u16(vmovl_u8(vget_low_u8(q))));
         v2 = vfmaq_f16(vm, vd, vcvtq_f16_u16(vmovl_u8(vget_high_u8(q))));
-#else
-        auto vd = F16::set1(GGML_FP16_TO_FP32(dl->d));
-        auto vm = F16::set1(GGML_FP16_TO_FP32(dl->m));
-        auto q  = _mm_loadu_si128((const __m128i *)dl->qs);
-#ifdef __AVX512F__
-        auto ql = _mm_and_si128(q, mask);
-        auto qh = _mm_and_si128(_mm_srli_epi16(q, 4), mask);
-        v1 = _mm512_fmadd_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(ql)), vm);
-        v2 = _mm512_fmadd_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(qh)), vm);
-#else
-        if (j%QK4_1) q = _mm_srli_epi16(q, 4);
-        auto q16 = _mm256_cvtepi8_epi16(_mm_and_si128(q, mask));
-        v1 = _mm256_fmadd_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(_mm256_castsi256_si128(q16))), vm);
-        v2 = _mm256_fmadd_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(_mm256_extracti128_si256(q16, 1))), vm);
-#endif
 #endif
     }
 
@@ -1071,6 +1212,13 @@ struct FlashQKV {
             return;
         }
 #endif
+//#if defined(__AVX__) && !defined(__AVX2__)
+//    inline void load_avx1(int l1, int i, __m256& v1, __m256& v2) const {
+//        int j = F16::block_size*i;
+//        auto dl = (const block_q8_0 *)Base::lblock(l1) + j/QK8_0;
+//        __m256 vd = _mm256_set1_ps(GGML_FP16_TO_FP32(dl->d));
+//#else
+//    inline void load(int l1, int i, F16::Data& v1, F16::Data& v2) const {
         F16::Data v[8];
 #ifdef __AVX2__
         F16::Data vs[4];
