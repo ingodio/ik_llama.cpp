@@ -24890,9 +24890,6 @@ static int ggml_compute_forward(struct ggml_compute_params * params, struct ggml
         case GGML_OP_SOFT_MAX:
             {
 #if GGML_USE_IQK_MULMAT
-        case GGML_OP_SOFT_MAX:
-            {
-#if GGML_USE_IQK_MULMAT
                 cgraph->nodes[i+1]->op == GGML_OP_RESHAPE  &&
                     cgraph->nodes[i+2]->op == GGML_OP_ARGSORT  &&
                     cgraph->nodes[i+3]->op == GGML_OP_VIEW     &&
