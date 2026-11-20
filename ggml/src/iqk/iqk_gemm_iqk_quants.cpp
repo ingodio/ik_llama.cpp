@@ -3448,6 +3448,7 @@ struct Scale16Extra {
         accum_mins_16(extra16, q8, acc, i, d);
         return make_wider_8(scales8);
     }
+
     constexpr static uint32x4_t emask  = {0x02020101, 0x08080404, 0x20201010, 0x80804040};
     constexpr static uint32x4_t eshuff = {0x06040200, 0x0e0c0a08, 0x07050301, 0x0f0d0b09};
 };
