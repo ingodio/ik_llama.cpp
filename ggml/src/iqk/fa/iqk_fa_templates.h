@@ -827,17 +827,6 @@ struct FlashMS {
     }
 
 #ifdef __aarch64__
-//static inline simde_float32x4_t v_expf(simde_float32x4_t x)
-//{
-//    float a[4];
-//    simde_vst1q_f32(a, x);
-
-//    for (int i = 0; i < 4; i++)
-//        a[i] = expf(a[i]);
-
-//    return simde_vld1q_f32(a);
-//}
-
     inline void update_S(int j, float32x4_t * vk) {
         auto vm = vdupq_n_f32(M[j]);
         auto vsum = vdupq_n_f32(0);
@@ -1126,13 +1115,6 @@ struct FlashQKV {
             return;
         }
 #endif
-//#if defined(__AVX__) && !defined(__AVX2__)
-//    inline void load_avx1(int l1, int i, __m256& v1, __m256& v2) const {
-//        int j = F16::block_size*i;
-//        auto dl = (const block_q8_0 *)Base::lblock(l1) + j/QK8_0;
-//        __m256 vd = _mm256_set1_ps(GGML_FP16_TO_FP32(dl->d));
-//#else
-//    inline void load(int l1, int i, F16::Data& v1, F16::Data& v2) const {
         F16::Data v[8];
 #ifdef __AVX2__
         F16::Data vs[4];
