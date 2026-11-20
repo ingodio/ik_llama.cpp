@@ -1117,87 +1117,54 @@ void MulMat::relu(int n, const float * x, float * y) {
 void MulMat::gelu(int n, const float *x, float *y) {
     constexpr float A = 0.044715f;
     constexpr float B = -1.5957691216057307f;
-
     const __m256 one = _mm256_set1_ps(1.0f);
     const __m256 a = _mm256_set1_ps(A);
     const __m256 b = _mm256_set1_ps(B);
-
     const __m256 log2e = _mm256_set1_ps(1.4426950408889634f);
     const __m256 ln2_hi = _mm256_set1_ps(0.693359375f);
     const __m256 ln2_lo = _mm256_set1_ps(-0.00021219444005f);
     const __m256 magic = _mm256_set1_ps(12582912.0f);
-
     const __m256 c1 = _mm256_set1_ps(1.9875691500e-4f);
     const __m256 c2 = _mm256_set1_ps(1.3981999507e-3f);
     const __m256 c3 = _mm256_set1_ps(8.3334519073e-3f);
     const __m256 c4 = _mm256_set1_ps(4.1665795894e-2f);
     const __m256 c5 = _mm256_set1_ps(1.6666665459e-1f);
     const __m256 c6 = _mm256_set1_ps(5.0000001201e-1f);
-
     int i = 0;
-
     for (; i + 7 < n; i += 8) {
         const __m256 v = _mm256_loadu_ps(x + i);
         const __m256 v2 = _mm256_mul_ps(v, v);
-
         // t = -sqrt(8/pi) * x * (1 + 0.044715*x*x)
         __m256 t = _mm256_mul_ps(
             b, _mm256_mul_ps(
                 v, _mm256_add_ps(one, _mm256_mul_ps(a, v2))));
-
-        // Clamp exponential argument.
         t = _mm256_max_ps(t, _mm256_set1_ps(-16.0f));
         t = _mm256_min_ps(t, _mm256_set1_ps(8.0f));
-
-        // Range reduction.
         __m256 fx = _mm256_add_ps(
             _mm256_mul_ps(t, log2e), magic);
         fx = _mm256_sub_ps(fx, magic);
-
-        __m256 r = _mm256_sub_ps(
-            t, _mm256_mul_ps(fx, ln2_hi));
-        r = _mm256_sub_ps(
-            r, _mm256_mul_ps(fx, ln2_lo));
-
-        // Cephes-style polynomial.
+        __m256 r = _mm256_sub_ps(t, _mm256_mul_ps(fx, ln2_hi));
+        r = _mm256_sub_ps(r, _mm256_mul_ps(fx, ln2_lo));
         const __m256 r2 = _mm256_mul_ps(r, r);
-
         __m256 p = _mm256_add_ps(c1, _mm256_mul_ps(r, c2));
         p = _mm256_add_ps(c3, _mm256_mul_ps(r, p));
         p = _mm256_add_ps(c4, _mm256_mul_ps(r, p));
         p = _mm256_add_ps(c5, _mm256_mul_ps(r, p));
         p = _mm256_add_ps(c6, _mm256_mul_ps(r, p));
-
-        const __m256 er = _mm256_add_ps(
-            one, _mm256_add_ps(r, _mm256_mul_ps(r2, p)));
-
-        // Construct 2^n using SSE2.
+        const __m256 er = _mm256_add_ps(one, _mm256_add_ps(r, _mm256_mul_ps(r2, p)));
         __m256i ni = _mm256_cvttps_epi32(fx);
-
         __m128i lo = _mm256_castsi256_si128(ni);
         __m128i hi = _mm256_extractf128_si256(ni, 1);
-
         const __m128i bias = _mm_set1_epi32(127);
-
         lo = _mm_slli_epi32(_mm_add_epi32(lo, bias), 23);
         hi = _mm_slli_epi32(_mm_add_epi32(hi, bias), 23);
-
         __m256 scale = _mm256_castps128_ps256(_mm_castsi128_ps(lo));
-        scale = _mm256_insertf128_ps(
-            scale, _mm_castsi128_ps(hi), 1);
-
+        scale = _mm256_insertf128_ps(scale, _mm_castsi128_ps(hi), 1);
         const __m256 e = _mm256_mul_ps(er, scale);
-
-        // GELU = x / (1 + exp(t))
         const __m256 den = _mm256_add_ps(one, e);
-
-        // Fast reciprocal.
         const __m256 recip = _mm256_rcp_ps(den);
-
         _mm256_storeu_ps(y + i, _mm256_mul_ps(v, recip));
     }
-
-    // Scalar tail.
     for (; i < n; ++i) {
         const float v = x[i];
         const float t = B * v * (1.0f + A * v * v);
@@ -1206,83 +1173,49 @@ void MulMat::gelu(int n, const float *x, float *y) {
 }
 void MulMat::silu(int n, const float *x, float *y) {
     const __m256 one = _mm256_set1_ps(1.0f);
-
     const __m256 log2e = _mm256_set1_ps(1.4426950408889634f);
     const __m256 ln2_hi = _mm256_set1_ps(0.693359375f);
     const __m256 ln2_lo = _mm256_set1_ps(-0.00021219444005f);
     const __m256 magic = _mm256_set1_ps(12582912.0f);
-
     const __m256 c1 = _mm256_set1_ps(1.9875691500e-4f);
     const __m256 c2 = _mm256_set1_ps(1.3981999507e-3f);
     const __m256 c3 = _mm256_set1_ps(8.3334519073e-3f);
     const __m256 c4 = _mm256_set1_ps(4.1665795894e-2f);
     const __m256 c5 = _mm256_set1_ps(1.6666665459e-1f);
     const __m256 c6 = _mm256_set1_ps(5.0000001201e-1f);
-
     const __m256 min_exp = _mm256_set1_ps(-16.0f);
     const __m256 max_exp = _mm256_set1_ps(8.0f);
-
     int i = 0;
-
     for (; i + 7 < n; i += 8) {
         const __m256 v = _mm256_loadu_ps(x + i);
-
-        // t = -x
         __m256 t = _mm256_sub_ps(_mm256_setzero_ps(), v);
-
-        // Clamp exponential argument.
         t = _mm256_max_ps(t, min_exp);
         t = _mm256_min_ps(t, max_exp);
-
-        // Range reduction.
-        __m256 fx = _mm256_add_ps(
-            _mm256_mul_ps(t, log2e), magic);
+        __m256 fx = _mm256_add_ps(_mm256_mul_ps(t, log2e), magic);
         fx = _mm256_sub_ps(fx, magic);
-
-        __m256 r = _mm256_sub_ps(
-            t, _mm256_mul_ps(fx, ln2_hi));
-        r = _mm256_sub_ps(
-            r, _mm256_mul_ps(fx, ln2_lo));
-
-        // Cephes-style polynomial.
+        __m256 r = _mm256_sub_ps(t, _mm256_mul_ps(fx, ln2_hi));
+        r = _mm256_sub_ps(r, _mm256_mul_ps(fx, ln2_lo));
         const __m256 r2 = _mm256_mul_ps(r, r);
-
         __m256 p = _mm256_add_ps(c1, _mm256_mul_ps(r, c2));
         p = _mm256_add_ps(c3, _mm256_mul_ps(r, p));
         p = _mm256_add_ps(c4, _mm256_mul_ps(r, p));
         p = _mm256_add_ps(c5, _mm256_mul_ps(r, p));
         p = _mm256_add_ps(c6, _mm256_mul_ps(r, p));
-
         const __m256 er = _mm256_add_ps(
             one, _mm256_add_ps(r, _mm256_mul_ps(r2, p)));
-
-        // Construct 2^n using SSE2 integer operations.
         __m256i ni = _mm256_cvttps_epi32(fx);
-
         __m128i lo = _mm256_castsi256_si128(ni);
         __m128i hi = _mm256_extractf128_si256(ni, 1);
-
         const __m128i bias = _mm_set1_epi32(127);
-
         lo = _mm_slli_epi32(_mm_add_epi32(lo, bias), 23);
         hi = _mm_slli_epi32(_mm_add_epi32(hi, bias), 23);
-
         __m256 scale = _mm256_castps128_ps256(_mm_castsi128_ps(lo));
-        scale = _mm256_insertf128_ps(
-            scale, _mm_castsi128_ps(hi), 1);
-
+        scale = _mm256_insertf128_ps(scale, _mm_castsi128_ps(hi), 1);
         const __m256 e = _mm256_mul_ps(er, scale);
-
-        // SiLU = x / (1 + exp(-x))
         const __m256 den = _mm256_add_ps(one, e);
-
-        // Fast reciprocal, no Newton-Raphson.
         const __m256 recip = _mm256_rcp_ps(den);
-
         _mm256_storeu_ps(y + i, _mm256_mul_ps(v, recip));
     }
-
-    // Scalar tail.
     for (; i < n; ++i) {
         const float v = x[i];
         y[i] = v / (1.0f + expf(-v));
@@ -1362,6 +1295,7 @@ void MulMat::silu(int n, const float * x, float * y) {
 void MulMat::relu(int n, const float * x, float * y) {
     for (int j = 0; j < n; ++j) y[j] = x[j] > 0 ? x[j] : 0;
 }
+
 #endif
 } // namespace
 
@@ -2112,9 +2046,6 @@ bool iqk_indexer_topk(struct ggml_tensor * dst, void * work_buffer, barrier_t ba
 
 #include "ggml-impl.h"
 #include "iqk_mul_mat.h"
-
-// These stubs abort unconditionally, but they implement interfaces that do
-// return on supported CPUs, so the noreturn suggestion does not apply.
 #if defined __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsuggest-attribute=noreturn"
@@ -2176,5 +2107,4 @@ extern "C" IQK_API void iqk_topk_moe(int, int, int, const float *, float *, int3
 #if defined __GNUC__
 #pragma GCC diagnostic pop
 #endif
-
 #endif
