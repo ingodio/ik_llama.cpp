@@ -859,9 +859,8 @@ function(get_flags CCID CCVER)
     set(CXX_FLAGS "")
 
     if (CCID MATCHES "Clang")
-        set(C_FLAGS   )
-#-Wunreachable-code-break -Wunreachable-code-return
-        set(CXX_FLAGS -Wmissing-prototypes -Wextra-semi)
+        set(C_FLAGS   -Wunreachable-code-break -Wunreachable-code-return)
+        set(CXX_FLAGS -Wunreachable-code-break -Wunreachable-code-return -Wmissing-prototypes -Wextra-semi)
 
         if (
             (CCID STREQUAL "Clang"      AND CCVER VERSION_GREATER_EQUAL 3.8.0) OR
