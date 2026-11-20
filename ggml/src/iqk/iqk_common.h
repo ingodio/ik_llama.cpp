@@ -644,13 +644,36 @@ static inline float convert_to_q8_k_r8(int k, float d0, const __m256i * qx, cons
 // ------------------------------------ __aarch64__ --------------------------------------------------
 
 #ifdef __AVX__
-#include "NEON_2_SSE.h"
+//#include "NEON_2_SSE.h"
+#define SIMDE_ENABLE_NATIVE_ALIASES
+#include "simde/arm/neon.h"
 //typedef _Float16 float16_t;
+//using float16_t = __fp16;
 #define __aarch64__
 #define ggml_vdotq_s32(a, b, c) vdotq_s32(a, b, c)
-using float16_t = __fp16;
 #define vdotq_laneq_s32(acc, a, b, lane) \
     vdotq_laneq_s32_impl<lane>(acc, a, b)
+template<int Lane>
+static inline int32x4_t vdotq_laneq_s32_impl(
+    int32x4_t acc,
+    int8x16_t a,
+    int8x16_t b)
+{
+    static_assert(Lane >= 0 && Lane < 4, "Invalid lane");
+    const __m128i zero = _mm_setzero_si128();
+    const __m128i bl = _mm_shuffle_epi32(
+        b, _MM_SHUFFLE(Lane, Lane, Lane, Lane));
+    const __m128i asign = _mm_cmpgt_epi8(zero, a);
+    const __m128i bsign = _mm_cmpgt_epi8(zero, bl);
+    const __m128i alo = _mm_unpacklo_epi8(a, asign);
+    const __m128i ahi = _mm_unpackhi_epi8(a, asign);
+    const __m128i blo = _mm_unpacklo_epi8(bl, bsign);
+    const __m128i bhi = _mm_unpackhi_epi8(bl, bsign);
+    const __m128i lo = _mm_madd_epi16(alo, blo);
+    const __m128i hi = _mm_madd_epi16(ahi, bhi);
+    const __m128i dot = _mm_hadd_epi32(lo, hi);
+    return _mm_add_epi32(acc, dot);
+}
 #define MM256_SET_M128I(a, b) _mm256_insertf128_si256(_mm256_castsi128_si256(b), (a), 1)
 struct Scales8KBase {
     template <typename Q8>
@@ -948,6 +971,8 @@ static IQK_ALWAYS_INLINE int32x4_t interleaved_dotq(const int8x16_t * qx, const 
     return sumi;
 }
 
+
+
 static IQK_ALWAYS_INLINE int32x4x2_t interleaved_dotq_b16(const int8x16_t * qx, const int8x16x2_t& y) {
     int32x4x2_t sumi = { vdupq_n_s32(0), vdupq_n_s32(0) };
     sumi.val[0] = vdotq_laneq_s32(sumi.val[0], qx[0], y.val[0], 0);
@@ -969,41 +994,6 @@ static IQK_ALWAYS_INLINE int32x4_t interleaved_dotq(const int8x16_t * qx, const 
     sumi = vdotq_laneq_s32(sumi, qx[3], y, 3);
     return sumi;
 }
-#ifdef __AVXN__
-template<int Lane>
-static inline int32x4_t dotq_laneq_s32_sse(int32x4_t acc, int8x16_t a, int8x16_t b) {
-    static_assert(Lane >= 0 && Lane < 4, "Invalid lane");
-    const __m128i zero = _mm_setzero_si128();
-    // Broadcast selected 32-bit lane.
-    const __m128i bl = _mm_shuffle_epi32(
-        b, _MM_SHUFFLE(Lane, Lane, Lane, Lane));
-    // Sign-extend bytes to 16-bit.
-    const __m128i asign = _mm_cmpgt_epi8(zero, a);
-    const __m128i bsign = _mm_cmpgt_epi8(zero, bl);
-    const __m128i alo = _mm_unpacklo_epi8(a, asign);
-    const __m128i ahi = _mm_unpackhi_epi8(a, asign);
-    const __m128i blo = _mm_unpacklo_epi8(bl, bsign);
-    const __m128i bhi = _mm_unpackhi_epi8(bl, bsign);
-    // Four pairs of signed 16-bit products.
-    const __m128i lo = _mm_madd_epi16(alo, blo);
-    const __m128i hi = _mm_madd_epi16(ahi, bhi);
-    // Horizontal sums: four groups of four bytes.
-    const __m128i dot = _mm_hadd_epi32(lo, hi);
-    return _mm_add_epi32(acc, dot);
-}
-
-static inline int32x4_t interleaved_dotq(const int8x16_t* qx, const int8x16_t& y)
-{
-    auto sumi = vdupq_n_s32(0);
-
-    sumi = dotq_laneq_s32_sse<0>(sumi, qx[0], y);
-    sumi = dotq_laneq_s32_sse<1>(sumi, qx[1], y);
-    sumi = dotq_laneq_s32_sse<2>(sumi, qx[2], y);
-    sumi = dotq_laneq_s32_sse<3>(sumi, qx[3], y);
-
-    return sumi;
-}
-#endif
 
 static IQK_ALWAYS_INLINE void prepare_iq4_nl_quants(const int8x16_t& values, const uint8x16_t& m4, const uint8x16x4_t& bits, int8x16_t * qx) {
     qx[0] = vqtbl1q_s8(values, vandq_u8(bits.val[0], m4));   //  0...3 from the 4 rows

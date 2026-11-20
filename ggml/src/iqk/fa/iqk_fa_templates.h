@@ -924,6 +924,17 @@ struct FlashMS {
     }
 
 #ifdef __aarch64__
+//static inline simde_float32x4_t v_expf(simde_float32x4_t x)
+//{
+//    float a[4];
+//    simde_vst1q_f32(a, x);
+
+//    for (int i = 0; i < 4; i++)
+//        a[i] = expf(a[i]);
+
+//    return simde_vld1q_f32(a);
+//}
+
     inline void update_S(int j, float32x4_t * vk) {
         auto vm = vdupq_n_f32(M[j]);
         auto vsum = vdupq_n_f32(0);
@@ -946,6 +957,33 @@ struct FlashMS {
 #endif
 
 #ifdef __aarch64__
+//static inline simde_float32x4_t v_tanh(simde_float32x4_t x) {
+//    simde_float32x4_t two = simde_vdupq_n_f32(2.0f);
+//    simde_float32x4_t one = simde_vdupq_n_f32(1.0f);
+
+////    simde_float32x4_t exp2x = vexpq_f32(simde_vmulq_f32(two, x));
+
+//    return simde_vdivq_f32(
+//        simde_vsubq_f32(exp2x, one),
+//        simde_vaddq_f32(exp2x, one)
+//    );
+//}
+static inline simde_float32x4_t v_tanh(simde_float32x4_t x)
+{
+    float a[4];
+    simde_vst1q_f32(a, x);
+
+    for (int i = 0; i < 4; i++) {
+        a[i] = tanhf(a[i]);
+    }
+
+    return simde_vld1q_f32(a);
+}
+
+
+
+
+
     inline float load_and_scale(int j, float32x4_t * vk) {
         float32x4_t vmax = vdupq_n_f32(-INFINITY);
         // Something goes wrong when storing and manipulating K*Q as fp16.

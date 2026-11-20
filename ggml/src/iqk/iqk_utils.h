@@ -240,7 +240,75 @@ static inline __m256 v_clamp_max(__m256 x, __m256 max) {
     auto mask = _mm256_cmp_ps(x, max, _CMP_GT_OQ);
     return _mm256_or_ps(_mm256_and_ps(mask, max), _mm256_andnot_ps(mask, x));
 }
+#elif __AVX__
+// float32x4_t
+#ifndef ESTRIN
+#define ESTRIN 1
+#endif
+static inline __m128 v_expf(__m128 x)
+{
+    const __m128 one = _mm_set1_ps(1.0f);
 
-#endif // __AVX2__
+    // Clamp to avoid integer conversion and exponent overflow.
+    x = _mm_min_ps(x, _mm_set1_ps(88.0f));
+    x = _mm_max_ps(x, _mm_set1_ps(-87.0f));
+
+    // Range reduction: x = n * ln(2) + r
+    const __m128 log2e = _mm_set1_ps(1.44269504088896341f);
+
+    __m128 fx = _mm_add_ps(
+        _mm_mul_ps(x, log2e),
+        _mm_set1_ps(12582912.0f));
+
+    fx = _mm_sub_ps(fx, _mm_set1_ps(12582912.0f));
+
+    __m128 r = _mm_sub_ps(
+        x, _mm_mul_ps(fx, _mm_set1_ps(0.693359375f)));
+
+    r = _mm_sub_ps(
+        r, _mm_mul_ps(fx, _mm_set1_ps(-0.00021219444005f)));
+
+    // Cephes polynomial approximation.
+    const __m128 c1 = _mm_set1_ps(1.9875691500e-4f);
+    const __m128 c2 = _mm_set1_ps(1.3981999507e-3f);
+    const __m128 c3 = _mm_set1_ps(8.3334519073e-3f);
+    const __m128 c4 = _mm_set1_ps(4.1665795894e-2f);
+    const __m128 c5 = _mm_set1_ps(1.6666665459e-1f);
+    const __m128 c6 = _mm_set1_ps(5.0000001201e-1f);
+
+    const __m128 r2 = _mm_mul_ps(r, r);
+
+#if ESTRIN
+    const __m128 r4 = _mm_mul_ps(r2, r2);
+
+    // Independent polynomial pairs.
+    const __m128 p0 = _mm_add_ps(c1, _mm_mul_ps(c2, r));
+    const __m128 p1 = _mm_add_ps(c3, _mm_mul_ps(c4, r));
+    const __m128 p2 = _mm_add_ps(c5, _mm_mul_ps(c6, r));
+
+    // Combine using Estrin's scheme.
+    const __m128 p01 = _mm_add_ps(p0, _mm_mul_ps(p1, r2));
+    const __m128 p = _mm_add_ps(p01, _mm_mul_ps(p2, r4));
+#else //HORNER
+    __m128 p = c6;
+    p = _mm_add_ps(c5, _mm_mul_ps(r, p));
+    p = _mm_add_ps(c4, _mm_mul_ps(r, p));
+    p = _mm_add_ps(c3, _mm_mul_ps(r, p));
+    p = _mm_add_ps(c2, _mm_mul_ps(r, p));
+    p = _mm_add_ps(c1, _mm_mul_ps(r, p));
+#endif
+    const __m128 er = _mm_add_ps(
+        one, _mm_add_ps(r, _mm_mul_ps(r2, p)));
+
+    // Construct 2^n.
+    __m128i ni = _mm_cvttps_epi32(fx);
+    ni = _mm_add_epi32(ni, _mm_set1_epi32(127));
+    ni = _mm_slli_epi32(ni, 23);
+
+    const __m128 scale = _mm_castsi128_ps(ni);
+
+    return _mm_mul_ps(er, scale);
+}
+#endif // AVX+
 
 #endif // IQK_IMPLEMENT

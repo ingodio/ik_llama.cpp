@@ -2871,8 +2871,8 @@ struct DequantizerIQ2XXS final : public BaseDequantizer<block_iq2_xxs> {
     }
 
     static inline void prepare2(uint8x16_t * b, const uint8_t * idx, const uint64_t * signs, uint32_t sidx) {
-        b[0] = vreinterpretq_u8_u64(uint64x2_t{iq2xxs_grid[idx[0]], iq2xxs_grid[idx[1]]});
-        b[1] = vreinterpretq_u8_u64(uint64x2_t{iq2xxs_grid[idx[2]], iq2xxs_grid[idx[3]]});
+        b[0] = vreinterpretq_u8_u64(((uint64x2_t{iq2xxs_grid[idx[0]], iq2xxs_grid[idx[1]]})));
+        b[1] = vreinterpretq_u8_u64(((uint64x2_t{iq2xxs_grid[idx[2]], iq2xxs_grid[idx[3]]})));
         apply_signs_2(b, signs, sidx);
     }
 
@@ -2996,8 +2996,8 @@ struct DequantizerIQ3XXS final : public BaseDequantizer<block_iq3_xxs> {
     }
 
     inline static void make2(const uint8_t * q3, uint32_t sidx, uint8x16_t * b) {
-        b[0] = vreinterpretq_u8_u32(uint32x4_t{iq3xxs_grid[q3[0]], iq3xxs_grid[q3[1]], iq3xxs_grid[q3[2]], iq3xxs_grid[q3[3]]});
-        b[1] = vreinterpretq_u8_u32(uint32x4_t{iq3xxs_grid[q3[4]], iq3xxs_grid[q3[5]], iq3xxs_grid[q3[6]], iq3xxs_grid[q3[7]]});
+        b[0] = vreinterpretq_u8_u32((uint32x4_t{iq3xxs_grid[q3[0]], iq3xxs_grid[q3[1]], iq3xxs_grid[q3[2]], iq3xxs_grid[q3[3]]}));
+        b[1] = vreinterpretq_u8_u32((uint32x4_t{iq3xxs_grid[q3[4]], iq3xxs_grid[q3[5]], iq3xxs_grid[q3[6]], iq3xxs_grid[q3[7]]}));
         apply_signs_2(b, keven_signs, sidx);
     }
     inline void prepare(int i, int j) {
@@ -3040,8 +3040,8 @@ struct DequantizerIQ3S final : public BaseDequantizer<block_iq3_s> {
             const int8x16_t& hshift, uint8x16_t * b) {
         auto vindex = vorrq_u16(idx_l, vandq_u16(vshlq_u16(vdupq_n_u16(qh), hshift), vdupq_n_u16(256)));
         const uint16_t * idx = (const uint16_t *)&vindex;
-        b[0] = vreinterpretq_u8_u32(uint32x4_t{iq3s_grid[idx[0]], iq3s_grid[idx[1]], iq3s_grid[idx[2]], iq3s_grid[idx[3]]});
-        b[1] = vreinterpretq_u8_u32(uint32x4_t{iq3s_grid[idx[4]], iq3s_grid[idx[5]], iq3s_grid[idx[6]], iq3s_grid[idx[7]]});
+        b[0] = vreinterpretq_u8_u32(((uint32x4_t{iq3s_grid[idx[0]], iq3s_grid[idx[1]], iq3s_grid[idx[2]], iq3s_grid[idx[3]]})));
+        b[1] = vreinterpretq_u8_u32(((uint32x4_t{iq3s_grid[idx[4]], iq3s_grid[idx[5]], iq3s_grid[idx[6]], iq3s_grid[idx[7]]})));
         sh.apply_signs_1(b+0, signs16);
         sh.apply_signs_1(b+1, signs16);
     }
@@ -3094,7 +3094,7 @@ static void mul_mat_iq2_xxs_r4_q8_k(int n, const void * vx, size_t bx, const Dat
                 signs128 = veorq_u8(signs128, vshrq_n_u8(signs128, 1));
                 sh.init();
                 for (int i = 0; i < 8; ++i) {
-                    qx[i] = vreinterpretq_s8_u64(uint64x2_t{iq2xxs_grid[qs[2*i+0]], iq2xxs_grid[qs[2*i+1]]});
+                    qx[i] = vreinterpretq_s8_u64((uint64x2_t{iq2xxs_grid[qs[2*i+0]], iq2xxs_grid[qs[2*i+1]]}));
                     sh.apply_signs_1((uint8x16_t *)qx+i, signs128);
                 }
                 for (int iy = 0; iy < nrc_y; ++iy) {
@@ -3157,7 +3157,7 @@ static void mul_mat_iq2_xs_r4_q8_k(int n, const void * vx, size_t bx, const Data
                     signs128 = veorq_u8(signs128, vshrq_n_u8(signs128, 1));
                     sh.init();
                     for (int i = 0; i < 8; ++i) {
-                        qx[i] = vreinterpretq_s8_u64(uint64x2_t{iq2xs_grid[qs[2*i+0] & 511], iq2xs_grid[qs[2*i+1] & 511]});
+                        qx[i] = vreinterpretq_s8_u64((uint64x2_t{iq2xs_grid[qs[2*i+0] & 511], iq2xs_grid[qs[2*i+1] & 511]}));
                         sh.apply_signs_1((uint8x16_t *)qx+i, signs128);
                     }
                     auto s32_1 = vmovl_u16(vget_low_u16 (scales16.val[ib]));
@@ -3221,9 +3221,9 @@ static void mul_mat_iq2_s_r4_q8_k(int n, const void * vx, size_t bx, const DataI
                     auto signs128 = vld1q_u8(iq2[ibl].signs + 64*is + 16*ib);
                     sh.init();
                     for (int i = 0; i < 4; ++i) {
-                        qx[2*i+0] = vreinterpretq_s8_u64(uint64x2_t{iq2s_grid[qs[4*i+0] | ((qh[i] << 8) & 0x300)], iq2s_grid[qs[4*i+1] | ((qh[i] << 6) & 0x300)]});
+                        qx[2*i+0] = vreinterpretq_s8_u64((uint64x2_t{iq2s_grid[qs[4*i+0] | ((qh[i] << 8) & 0x300)], iq2s_grid[qs[4*i+1] | ((qh[i] << 6) & 0x300)]}));
                         sh.apply_signs_1((uint8x16_t *)qx+2*i+0, signs128);
-                        qx[2*i+1] = vreinterpretq_s8_u64(uint64x2_t{iq2s_grid[qs[4*i+2] | ((qh[i] << 4) & 0x300)], iq2s_grid[qs[4*i+3] | ((qh[i] << 2) & 0x300)]});
+                        qx[2*i+1] = vreinterpretq_s8_u64((uint64x2_t{iq2s_grid[qs[4*i+2] | ((qh[i] << 4) & 0x300)], iq2s_grid[qs[4*i+3] | ((qh[i] << 2) & 0x300)]}));
                         sh.apply_signs_1((uint8x16_t *)qx+2*i+1, signs128);
                     }
                     qs += 16; qh += 4;
@@ -3277,7 +3277,7 @@ static void mul_mat_iq3_xxs_r4_q8_k(int n, const void * vx, size_t bx, const Dat
                 signs128 = veorq_u8(signs128, vshrq_n_u8(signs128, 1));
                 sh.init();
                 for (int i = 0; i < 8; ++i) {
-                    qx[i] = vreinterpretq_s8_u32(uint32x4_t{iq3xxs_grid[qs[4*i+0]], iq3xxs_grid[qs[4*i+1]], iq3xxs_grid[qs[4*i+2]], iq3xxs_grid[qs[4*i+3]]});
+                    qx[i] = vreinterpretq_s8_u32((uint32x4_t{iq3xxs_grid[qs[4*i+0]], iq3xxs_grid[qs[4*i+1]], iq3xxs_grid[qs[4*i+2]], iq3xxs_grid[qs[4*i+3]]}));
                     sh.apply_signs_1((uint8x16_t *)qx+i, signs128);
                 }
                 for (int iy = 0; iy < nrc_y; ++iy) {
@@ -3314,7 +3314,7 @@ static void mul_mat_iq3_s_r4_q8_k(int n, const void * vx, size_t bx, const DataI
     int32x4_t   isum[nrc_y] = {};
     int8x16_t   qx[8];
     auto m1 = vdupq_n_u8(1);
-    auto shuff = vreinterpretq_u8_u32(uint32x4_t{0xffffff00, 0xffffff01, 0xffffff02, 0xffffff03});
+    auto shuff = vreinterpretq_u8_u32((uint32x4_t{0xffffff00, 0xffffff01, 0xffffff02, 0xffffff03}));
     uint32_t    stored_scales[8];
     for (int ix = 0; ix < nrc_x; ix += 4) {
         auto iq3 = (const block_iq3_s_r4 *)((const char *)vx + (ix+0)*bx);
@@ -3331,15 +3331,22 @@ static void mul_mat_iq3_s_r4_q8_k(int n, const void * vx, size_t bx, const DataI
                 auto signs128 = vld1q_u8(iq3[ibl].signs+16*ib);
                 if constexpr (nrc_y == 1) {
                     auto qh32 = (const uint32_t *)qh;
-                    auto idx_h = vreinterpretq_u16_u64(vshlq_u64(vreinterpretq_u64_u16(vmovl_u8(vreinterpret_u8_u32(vdup_n_u32(qh32[0])))), int64x2_t{8, 4}));
+                    auto idx_h = vreinterpretq_u16_u64((vreinterpretq_u64_u16(
+  vmovl_u8(
+    vreinterpret_u8_u32(
+vdup_n_u32(qh32[0])
+    )
+  )
+), int64x2_t{8, 4}));
+//                    auto idx_h = vreinterpretq_u16_u64(vshlq_u64(vreinterpretq_u64_u16(vmovl_u8(vreinterpret_u8_u32(vdup_n_u32(qh32[0])))), int64x2_t{8, 4}));
                     union { uint16x8_t vec; uint16_t val[8]; } hidx;
                     for (int i = 0; i < 4; ++i) {
                         auto idx_l = vmovl_u8(vld1_u8(qs));
                         hidx.vec = vorrq_u16(idx_l, vandq_u16(idx_h, vdupq_n_u16(0x100))); idx_h = vshrq_n_u16(idx_h, 1);
-                        qx[2*i+0] = vreinterpretq_s8_u32(uint32x4_t{iq3s_grid[hidx.val[0]], iq3s_grid[hidx.val[1]], iq3s_grid[hidx.val[2]], iq3s_grid[hidx.val[3]]});
+                        qx[2*i+0] = vreinterpretq_s8_u32((uint32x4_t{iq3s_grid[hidx.val[0]], iq3s_grid[hidx.val[1]], iq3s_grid[hidx.val[2]], iq3s_grid[hidx.val[3]]}));
                         auto signs = vreinterpretq_s8_u8(vorrq_u8(vceqq_u8(vandq_u8(signs128, m1), m1), m1));
                         qx[2*i+0] = vmulq_s8(qx[2*i+0], signs);
-                        qx[2*i+1] = vreinterpretq_s8_u32(uint32x4_t{iq3s_grid[hidx.val[4]], iq3s_grid[hidx.val[5]], iq3s_grid[hidx.val[6]], iq3s_grid[hidx.val[7]]});
+                        qx[2*i+1] = vreinterpretq_s8_u32((uint32x4_t{iq3s_grid[hidx.val[4]], iq3s_grid[hidx.val[5]], iq3s_grid[hidx.val[6]], iq3s_grid[hidx.val[7]]}));
                         signs = vreinterpretq_s8_u8(vorrq_u8(vceqq_u8(vandq_u8(vshrq_n_u8(signs128, 4), m1), m1), m1));
                         qx[2*i+1] = vmulq_s8(qx[2*i+1], signs);
                         signs128 = vshrq_n_u8(signs128, 1);
@@ -3347,15 +3354,28 @@ static void mul_mat_iq3_s_r4_q8_k(int n, const void * vx, size_t bx, const DataI
                     }
                 } else {
                     for (int i = 0; i < 4; ++i) {
-                        qx[2*i+0] = vreinterpretq_s8_u32(uint32x4_t{iq3s_grid[qs[0] | ((qh[0] << (8-i)) & 0x100)], iq3s_grid[qs[1] | ((qh[1] << (8-i)) & 0x100)],
-                                                                    iq3s_grid[qs[2] | ((qh[2] << (8-i)) & 0x100)], iq3s_grid[qs[3] | ((qh[3] << (8-i)) & 0x100)]});
-                        auto signs = vreinterpretq_s8_u8(vorrq_u8(vceqq_u8(vandq_u8(signs128, m1), m1), m1));
-                        qx[2*i+0] = vmulq_s8(qx[2*i+0], signs);
+                        qx[2*i+0] = vreinterpretq_s8_u32((uint32x4_t{iq3s_grid[qs[0] | ((qh[0] << (8-i)) & 0x100)], iq3s_grid[qs[1] | ((qh[1] << (8-i)) & 0x100)],
+                                                                    iq3s_grid[qs[2] | ((qh[2] << (8-i)) & 0x100)], iq3s_grid[qs[3] | ((qh[3] << (8-i)) & 0x100)]}));
+                        auto signs = vreinterpretq_s8_u8(
+vorrq_u8(
+  vceqq_u8(
+    vandq_u8(signs128, m1)
+  , m1)
+, m1));
+                        qx[2*i+0] = vmulq_s8((qx[2*i+0]), signs);
 
-                        qx[2*i+1] = vreinterpretq_s8_u32(uint32x4_t{iq3s_grid[qs[4] | ((qh[0] << (4-i)) & 0x100)], iq3s_grid[qs[5] | ((qh[1] << (4-i)) & 0x100)],
-                                                                    iq3s_grid[qs[6] | ((qh[2] << (4-i)) & 0x100)], iq3s_grid[qs[7] | ((qh[3] << (4-i)) & 0x100)]});
-                        signs = vreinterpretq_s8_u8(vorrq_u8(vceqq_u8(vandq_u8(vshrq_n_u8(signs128, 4), m1), m1), m1));
-                        qx[2*i+1] = vmulq_s8(qx[2*i+1], signs);
+                        qx[2*i+1] = vreinterpretq_s8_u32((uint32x4_t{iq3s_grid[qs[4] | ((qh[0] << (4-i)) & 0x100)], iq3s_grid[qs[5] | ((qh[1] << (4-i)) & 0x100)],
+                                                                    iq3s_grid[qs[6] | ((qh[2] << (4-i)) & 0x100)], iq3s_grid[qs[7] | ((qh[3] << (4-i)) & 0x100)]}));
+                        signs = vreinterpretq_s8_u8((
+vorrq_u8(
+  vceqq_u8(
+    vandq_u8(
+      vshrq_n_u8(signs128, 4)
+    , m1)
+  , m1)
+, m1)
+));
+                        qx[2*i+1] = vmulq_s8((qx[2*i+1]), signs);
 
                         qs += 8;
                         signs128 = vshrq_n_u8(signs128, 1);
@@ -3453,8 +3473,8 @@ void iqk_convert_iq2_xxs_q8_k_r8(int n, const void * vx, size_t bx, void * vy, i
                 for (int ib32 = 0; ib32 < 8; ++ib32) {
                     std::memcpy(aux32, x8[k][i].qs + 4*ib32, 2*sizeof(uint32_t));
                     ls[2*ib32+0] = ls[2*ib32+1] = (2*(aux32[1] >> 28) + 1);
-                    xv[ib32].val[0] = vreinterpretq_s8_u64(uint64x2_t{iq2xxs_grid[aux8[0]], iq2xxs_grid[aux8[1]]});
-                    xv[ib32].val[1] = vreinterpretq_s8_u64(uint64x2_t{iq2xxs_grid[aux8[2]], iq2xxs_grid[aux8[3]]});
+                    xv[ib32].val[0] = vreinterpretq_s8_u64((uint64x2_t{iq2xxs_grid[aux8[0]], iq2xxs_grid[aux8[1]]}));
+                    xv[ib32].val[1] = vreinterpretq_s8_u64((uint64x2_t{iq2xxs_grid[aux8[2]], iq2xxs_grid[aux8[3]]}));
                     apply_signs_2((uint8x16_t *)xv[ib32].val, keven_signs, aux32[1]);
                 }
                 float dnew = convert_to_q8_k_r8(1.f/124, xv, ls, block, (uint32_t *)y[i].qs + k);
@@ -3492,10 +3512,10 @@ void iqk_convert_iq2_xs_q8_k_r8(int n, const void * vx, size_t bx, void * vy, in
                 auto aux1 = vcombine_u8(vzip1_u8(scales_l, scales_h), vzip2_u8(scales_l, scales_h));
                 helper.vec = vreinterpretq_s8_u8(vorrq_u8(vshlq_n_u8(aux1, 1), vdupq_n_u8(1)));
                 for (int ib32 = 0; ib32 < 8; ++ib32) {
-                    xv[ib32].val[0] = vreinterpretq_s8_u64(uint64x2_t{iq2xs_grid[x8[k][i].qs[4*ib32+0] & 511], iq2xs_grid[x8[k][i].qs[4*ib32+1] & 511]});
-                    xv[ib32].val[1] = vreinterpretq_s8_u64(uint64x2_t{iq2xs_grid[x8[k][i].qs[4*ib32+2] & 511], iq2xs_grid[x8[k][i].qs[4*ib32+3] & 511]});
-                    auto s1 = vreinterpretq_s8_u64(uint64x2_t{keven_signs[x8[k][i].qs[4*ib32+0] >> 9], keven_signs[x8[k][i].qs[4*ib32+1] >> 9]});
-                    auto s2 = vreinterpretq_s8_u64(uint64x2_t{keven_signs[x8[k][i].qs[4*ib32+2] >> 9], keven_signs[x8[k][i].qs[4*ib32+3] >> 9]});
+                    xv[ib32].val[0] = vreinterpretq_s8_u64((uint64x2_t{iq2xs_grid[x8[k][i].qs[4*ib32+0] & 511], iq2xs_grid[x8[k][i].qs[4*ib32+1] & 511]}));
+                    xv[ib32].val[1] = vreinterpretq_s8_u64((uint64x2_t{iq2xs_grid[x8[k][i].qs[4*ib32+2] & 511], iq2xs_grid[x8[k][i].qs[4*ib32+3] & 511]}));
+                    auto s1 = vreinterpretq_s8_u64((uint64x2_t{keven_signs[x8[k][i].qs[4*ib32+0] >> 9], keven_signs[x8[k][i].qs[4*ib32+1] >> 9]}));
+                    auto s2 = vreinterpretq_s8_u64((uint64x2_t{keven_signs[x8[k][i].qs[4*ib32+2] >> 9], keven_signs[x8[k][i].qs[4*ib32+3] >> 9]}));
                     xv[ib32].val[0] = vmulq_s8(xv[ib32].val[0], s1);
                     xv[ib32].val[1] = vmulq_s8(xv[ib32].val[1], s2);
                 }
@@ -3575,8 +3595,8 @@ void iqk_convert_iq3_xxs_q8_k_r8(int n, const void * vx, size_t bx, void * vy, i
                 for (int ib32 = 0; ib32 < 8; ++ib32) {
                     std::memcpy(&aux32, sas + 4*ib32, sizeof(uint32_t));
                     ls[2*ib32 + 0] = ls[2*ib32 + 1] = (2*(aux32 >> 28) + 1);
-                    xv[ib32].val[0] = vreinterpretq_s8_u32(uint32x4_t{iq3xxs_grid[qs[0]], iq3xxs_grid[qs[1]], iq3xxs_grid[qs[2]], iq3xxs_grid[qs[3]]});
-                    xv[ib32].val[1] = vreinterpretq_s8_u32(uint32x4_t{iq3xxs_grid[qs[4]], iq3xxs_grid[qs[5]], iq3xxs_grid[qs[6]], iq3xxs_grid[qs[7]]});
+                    xv[ib32].val[0] = vreinterpretq_s8_u32((uint32x4_t{iq3xxs_grid[qs[0]], iq3xxs_grid[qs[1]], iq3xxs_grid[qs[2]], iq3xxs_grid[qs[3]]}));
+                    xv[ib32].val[1] = vreinterpretq_s8_u32((uint32x4_t{iq3xxs_grid[qs[4]], iq3xxs_grid[qs[5]], iq3xxs_grid[qs[6]], iq3xxs_grid[qs[7]]}));
                     apply_signs_2((uint8x16_t *)xv[ib32].val, keven_signs, aux32);
                     qs += 8;
                 }
@@ -3614,8 +3634,8 @@ void iqk_convert_iq3_xxs_q8_k_r8(int n, const void * vx, size_t bx, void * vy, i
 //            const int8x16_t& hshift, uint8x16_t * b) {
 //        auto vindex = vorrq_u16(idx_l, vandq_u16(vshlq_u16(vdupq_n_u16(qh), hshift), vdupq_n_u16(256)));
 //        const uint16_t * idx = (const uint16_t *)&vindex;
-//        b[0] = vreinterpretq_u8_u32(uint32x4_t{iq3s_grid[idx[0]], iq3s_grid[idx[1]], iq3s_grid[idx[2]], iq3s_grid[idx[3]]});
-//        b[1] = vreinterpretq_u8_u32(uint32x4_t{iq3s_grid[idx[4]], iq3s_grid[idx[5]], iq3s_grid[idx[6]], iq3s_grid[idx[7]]});
+//        b[0] = vreinterpretq_u8_u32((uint64x2_t{iq3s_grid[idx[0]], iq3s_grid[idx[1]], iq3s_grid[idx[2]], iq3s_grid[idx[3]]}));
+//        b[1] = vreinterpretq_u8_u32((uint64x2_t{iq3s_grid[idx[4]], iq3s_grid[idx[5]], iq3s_grid[idx[6]], iq3s_grid[idx[7]]}));
 //        sh.apply_signs_1(b+0, signs16);
 //        sh.apply_signs_1(b+1, signs16);
 //    }

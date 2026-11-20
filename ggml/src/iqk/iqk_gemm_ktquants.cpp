@@ -1463,11 +1463,11 @@ void iqk_dequantize_iq2_kt(int n, const void * vx, size_t bx, float16_t * y, siz
         for (int i = 0; i < nb; ++i) {
             const uint16_t * ql = (const uint16_t *)x[i].ql;
             auto u32 = *(const uint32_t *)x[i].scales;
-#if !defined(__AVX__)
+//#if !defined(__AVX__)
             auto s8_u32 = uint32x2_t{u32, u32 >> 4};
-#else
-            uint32x2_t s8_u32; s8_u32.m64_u32[0] = u32; s8_u32.m64_u32[1] = u32 >> 4;
-#endif
+//#else
+//            uint32x2_t s8_u32; s8_u32.m64_u32[0] = u32; s8_u32.m64_u32[1] = u32 >> 4;
+//#endif
             s8_u32 = vand_u8(s8_u32, vdup_n_u32(0x0f0f0f0f));
             auto s8 = vqtbl1_s8(values, vreinterpret_u8_u32(s8_u32));
             auto s16 = vmovl_s8(s8);
@@ -1518,11 +1518,11 @@ void mul_mat_iq2_kt_F16_T(int n, const void * vx, size_t bx, const DataInfo& inf
         for (int i = 0; i < nb; ++i) {
             const uint16_t * ql = (const uint16_t *)x[i].ql;
             auto u32 = *(const uint32_t *)x[i].scales;
-#if !defined(__AVX__)
+//#if !defined(__AVX__)
             auto s8_u32 = uint32x2_t{u32, u32 >> 4};
-#else
-            uint32x2_t s8_u32; s8_u32.m64_u32[0] = u32; s8_u32.m64_u32[1] = u32 >> 4;
-#endif
+//#else
+//            uint32x2_t s8_u32; s8_u32.m64_u32[0] = u32; s8_u32.m64_u32[1] = u32 >> 4;
+//#endif
             s8_u32 = vand_u8(s8_u32, vdup_n_u32(0x0f0f0f0f));
             auto s8 = vqtbl1_s8(values, vreinterpret_u8_u32(s8_u32));
             auto s16 = vmovl_s8(s8);
@@ -1581,11 +1581,11 @@ void iqk_dequantize_iq3_kt(int n, const void * vx, size_t bx, float16_t * y, siz
             const uint16_t * ql = (const uint16_t *)x[i].ql;
             const uint8_t * qh = x[i].qh;
             auto u32 = *(const uint32_t *)x[i].scales;
-#if !defined(__AVX__)
+//#if !defined(__AVX__)
             auto s8_u32 = uint32x2_t{u32, u32 >> 4};
-#else
-            uint32x2_t s8_u32; s8_u32.m64_u32[0] = u32; s8_u32.m64_u32[1] = u32 >> 4;
-#endif
+//#else
+//            uint32x2_t s8_u32; s8_u32.m64_u32[0] = u32; s8_u32.m64_u32[1] = u32 >> 4;
+//#endif
             s8_u32 = vand_u8(s8_u32, vdup_n_u32(0x0f0f0f0f));
             auto s16 = vmovl_s8(vreinterpret_s8_u32(s8_u32));
             auto s32l = vmovl_s16(vget_low_s16 (s16));
@@ -1644,11 +1644,11 @@ void mul_mat_iq3_kt_F16_T(int n, const void * vx, size_t bx, const DataInfo& inf
             const uint16_t * ql = (const uint16_t *)x[i].ql;
             const uint8_t * qh = x[i].qh;
             auto u32 = *(const uint32_t *)x[i].scales;
-#if !defined(__AVX__)
+//#if !defined(__AVX__)
             auto s8_u32 = uint32x2_t{u32, u32 >> 4};
-#else
-            uint32x2_t s8_u32; s8_u32.m64_u32[0] = u32; s8_u32.m64_u32[1] = u32 >> 4;
-#endif
+//#else
+//            uint32x2_t s8_u32; s8_u32.m64_u32[0] = u32; s8_u32.m64_u32[1] = u32 >> 4;
+//#endif
             s8_u32 = vand_u8(s8_u32, vdup_n_u32(0x0f0f0f0f));
             auto s16 = vmovl_s8(vreinterpret_s8_u32(s8_u32));
             s_helper.vec = vcvtq_f16_s16(s16);
@@ -2194,11 +2194,11 @@ void iqk_dequantize_iq2_kt_q80_r8(int n, const void * vx, size_t bx, void * vy, 
         for (int i = 0; i < nb; ++i) {
             for (int k = 0; k < 8; ++k) {
                 auto u32 = *(const uint32_t *)x8[k][i].scales;
-#if !defined(__AVX__)
+//#if !defined(__AVX__)
                 auto s8_u32 = uint32x2_t{u32, u32 >> 4};
-#else
-                uint32x2_t s8_u32; s8_u32.m64_u32[0] = u32; s8_u32.m64_u32[1] = u32 >> 4;
-#endif
+//#else
+//                uint32x2_t s8_u32; s8_u32.m64_u32[0] = u32; s8_u32.m64_u32[1] = u32 >> 4;
+//#endif
                 s8_u32 = vand_u8(s8_u32, vdup_n_u32(0x0f0f0f0f));
                 auto s8 = vqtbl1_s8(values, vreinterpret_u8_u32(s8_u32));
                 auto s16 = vmovl_s8(s8);
@@ -2251,11 +2251,11 @@ void iqk_dequantize_iq3_kt_q80_r8(int n, const void * vx, size_t bx, void * vy, 
         for (int i = 0; i < nb; ++i) {
             for (int k = 0; k < 8; ++k) {
                 auto u32 = *(const uint32_t *)x8[k][i].scales;
-#if !defined(__AVX__)
+//#if !defined(__AVX__)
                 auto s8_u32 = uint32x2_t{u32, u32 >> 4};
-#else
-                uint32x2_t s8_u32; s8_u32.m64_u32[0] = u32; s8_u32.m64_u32[1] = u32 >> 4;
-#endif
+//#else
+//                uint32x2_t s8_u32; s8_u32.m64_u32[0] = u32; s8_u32.m64_u32[1] = u32 >> 4;
+//#endif
                 s8_u32 = vand_u8(s8_u32, vdup_n_u32(0x0f0f0f0f));
                 auto s16 = vmovl_s8(vreinterpret_s8_u32(s8_u32));
                 vst1q_f32(ls_all + 8*k + 0, vcvtq_f32_s32(vmovl_s16(vget_low_s16(s16))));
@@ -2523,11 +2523,11 @@ void mul_mat_iq2_kt_q8_0_x4_T(int n, const void * vx, size_t bx, const DataInfo&
 
         for (int i = 0; i < nb; ++i) {
             auto u32 = *(const uint32_t *)x[i].scales;
-#if !defined(__AVX__)
+//#if !defined(__AVX__)
             auto s8_u32 = uint32x2_t{u32, u32 >> 4};
-#else
-            uint32x2_t s8_u32; s8_u32.m64_u32[0] = u32; s8_u32.m64_u32[1] = u32 >> 4;
-#endif
+//#else
+//            uint32x2_t s8_u32; s8_u32.m64_u32[0] = u32; s8_u32.m64_u32[1] = u32 >> 4;
+//#endif
             s8_u32 = vand_u8(s8_u32, vdup_n_u32(0x0f0f0f0f));
             auto s8 = vqtbl1_s8(values, vreinterpret_u8_u32(s8_u32));
             auto s16 = vmovl_s8(s8);
@@ -2629,11 +2629,11 @@ void mul_mat_iq3_kt_q8_0_x4_T(int n, const void * vx, size_t bx, const DataInfo&
 
         for (int i = 0; i < nb; ++i) {
             auto u32 = *(const uint32_t *)x[i].scales;
-#if !defined(__AVX__)
+//#if !defined(__AVX__)
             auto s8_u32 = uint32x2_t{u32, u32 >> 4};
-#else
-            uint32x2_t s8_u32; s8_u32.m64_u32[0] = u32; s8_u32.m64_u32[1] = u32 >> 4;
-#endif
+//#else
+//            uint32x2_t s8_u32; s8_u32.m64_u32[0] = u32; s8_u32.m64_u32[1] = u32 >> 4;
+//#endif
             s8_u32 = vand_u8(s8_u32, vdup_n_u32(0x0f0f0f0f));
             auto s16 = vmovl_s8(vreinterpret_s8_u32(s8_u32));
             scales.val[0] = vmulq_f32(d, vcvtq_f32_s32(vmovl_s16(vget_low_s16 (s16))));

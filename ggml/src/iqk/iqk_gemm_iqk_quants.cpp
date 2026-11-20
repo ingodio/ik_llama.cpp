@@ -3448,30 +3448,30 @@ struct Scale16Extra {
         accum_mins_16(extra16, q8, acc, i, d);
         return make_wider_8(scales8);
     }
-#if !defined(__AVX__)
+//#if !defined(__AVX__)
     constexpr static uint32x4_t emask  = {0x02020101, 0x08080404, 0x20201010, 0x80804040};
     constexpr static uint32x4_t eshuff = {0x06040200, 0x0e0c0a08, 0x07050301, 0x0f0d0b09};
-#else
-constexpr static uint32_t mka_data[8] = {
-    ka, ka1, ka2, ka3,
-    ka4, ka5, ka6, ka7
-};
+//#else
+//constexpr static uint32_t mka_data[8] = {
+//    ka, ka1, ka2, ka3,
+//    ka4, ka5, ka6, ka7
+//};
 
-constexpr static uint32_t mkb_data[8] = {
-    kb, kb1, kb2, kb3,
-    kb4, kb5, kb6, kb7
-};
+//constexpr static uint32_t mkb_data[8] = {
+//    kb, kb1, kb2, kb3,
+//    kb4, kb5, kb6, kb7
+//};
 
-const uint32x4x2_t mka = {{
-    _mm_loadu_si128(reinterpret_cast<const __m128i*>(&mka_data[0])),
-    _mm_loadu_si128(reinterpret_cast<const __m128i*>(&mka_data[4]))
-}};
+//const uint32x4x2_t mka = {{
+//    _mm_loadu_si128(reinterpret_cast<const __m128i*>(&mka_data[0])),
+//    _mm_loadu_si128(reinterpret_cast<const __m128i*>(&mka_data[4]))
+//}};
 
-const uint32x4x2_t mkb = {{
-    _mm_loadu_si128(reinterpret_cast<const __m128i*>(&mkb_data[0])),
-    _mm_loadu_si128(reinterpret_cast<const __m128i*>(&mkb_data[4]))
-}};
-#endif
+//const uint32x4x2_t mkb = {{
+//    _mm_loadu_si128(reinterpret_cast<const __m128i*>(&mkb_data[0])),
+//    _mm_loadu_si128(reinterpret_cast<const __m128i*>(&mkb_data[4]))
+//}};
+//#endif
 };
 
 // Note: on ARM_NEON we cannot use the values shifted into the uint8_t range because
@@ -3509,7 +3509,7 @@ struct DequantizerIQ4K final : public BaseDequantizer<block_iq4_k> {
 
     Q4bits bits;
     const int8x16_t values;
-    const uint8x16_t hshuff = vreinterpretq_u8_u32(uint32x4_t{0x09010800, 0x0b030a02, 0x0d050c04, 0x0f070e06});
+    const uint8x16_t hshuff = vreinterpretq_u8_u32((uint32x4_t{0x09010800, 0x0b030a02, 0x0d050c04, 0x0f070e06}));
 
 };
 
@@ -3556,7 +3556,7 @@ struct DequantizerIQ5K final : public BaseDequantizer<block_iq5_k> {
 
     Q4bits bits;
     const int8x16x2_t values;
-    const uint8x16_t hshuff = vreinterpretq_u8_u32(uint32x4_t{0x09010800, 0x0b030a02, 0x0d050c04, 0x0f070e06});
+    const uint8x16_t hshuff = vreinterpretq_u8_u32((uint32x4_t{0x09010800, 0x0b030a02, 0x0d050c04, 0x0f070e06}));
     const uint8x16_t hm = vdupq_n_u8(0x10);
     uint8x16x2_t hbits;
 
@@ -3623,7 +3623,7 @@ struct DequantizerIQ2K final : public BaseDequantizer<block_iq2_k> {
 
     Q2bits bits;
     const int8x16_t values = vreinterpretq_s8_u64(vdupq_n_u64(0x000000001101f3e1));
-    const uint8x16_t hshuff = vreinterpretq_u8_u32(uint32x4_t{0x09010800, 0x0b030a02, 0x0d050c04, 0x0f070e06});
+    const uint8x16_t hshuff = vreinterpretq_u8_u32((uint32x4_t{0x09010800, 0x0b030a02, 0x0d050c04, 0x0f070e06}));
 
 };
 
@@ -3679,9 +3679,9 @@ struct DequantizerIQ3K final : public BaseDequantizer<block_iq3_k> {
     Q2bits bits;
     uint8x16x2_t hbits;
     const int8x16_t values = vreinterpretq_s8_u64(vdupq_n_u64(0x2f1c0d01f6e9d8c1));
-    const uint8x16_t hshuff = vreinterpretq_u8_u32(uint32x4_t{0x09010800, 0x0b030a02, 0x0d050c04, 0x0f070e06});
+    const uint8x16_t hshuff = vreinterpretq_u8_u32((uint32x4_t{0x09010800, 0x0b030a02, 0x0d050c04, 0x0f070e06}));
     const uint8x16_t hmask = vdupq_n_u8(4);
-    const uint8x16_t sign_mask = vreinterpretq_u8_u64(uint64x2_t{0x0808040402020101, 0x8080404020201010});
+    const uint8x16_t sign_mask = vreinterpretq_u8_u64((uint64x2_t{0x0808040402020101, 0x8080404020201010}));
     const uint8x16_t sign_shuffle = load_sign_shuffle();
 
 };
@@ -4239,8 +4239,8 @@ void mul_mat_iq2_k_r4_q8_k(int n, const void * vx, size_t bx, const DataInfo& in
     auto m03 = vdupq_n_u8(0x03);
     auto ms = vdupq_n_u8(4);
     uint8x16x2_t shift_shuffle = {
-        vreinterpretq_u8_u64(uint64x2_t{0x0101010100000000, 0x0303030302020202}),
-        vreinterpretq_u8_u64(uint64x2_t{0x0505050504040404, 0x0707070706060606})
+        vreinterpretq_u8_u64((uint64x2_t{0x0101010100000000, 0x0303030302020202})),
+        vreinterpretq_u8_u64((uint64x2_t{0x0505050504040404, 0x0707070706060606}))
     };
     auto values8 = vld1_s8(iq2nl_values);
     auto values = vcombine_s8(values8, values8);
@@ -4345,8 +4345,8 @@ void mul_mat_iq3_k_r4_q8_k(int n, const void * vx, size_t bx, const DataInfo& in
     auto m03 = vdupq_n_u8(0x03);
     auto m04 = vdupq_n_u8(0x04);
     uint8x16x2_t shift_shuffle = {
-        vreinterpretq_u8_u64(uint64x2_t{0x0101010100000000, 0x0303030302020202}),
-        vreinterpretq_u8_u64(uint64x2_t{0x0505050504040404, 0x0707070706060606})
+        vreinterpretq_u8_u64((uint64x2_t{0x0101010100000000, 0x0303030302020202})),
+        vreinterpretq_u8_u64((uint64x2_t{0x0505050504040404, 0x0707070706060606}))
     };
     uint8x16x2_t smask = { vcombine_u8(vdup_n_u8(1), vdup_n_u8(2)), vcombine_u8(vdup_n_u8(4), vdup_n_u8(8)) };
     auto values = vld1q_s8(iq3nl_values);
@@ -4459,8 +4459,8 @@ void mul_mat_iq4_k_r4_q8_k(int n, const void * vx, size_t bx, const DataInfo& in
     auto ms = vdupq_n_u8(4);
     auto m32 = vdupq_n_s8(-32);
     uint8x16x2_t shift_shuffle = {
-        vreinterpretq_u8_u64(uint64x2_t{0x0101010100000000, 0x0303030302020202}),
-        vreinterpretq_u8_u64(uint64x2_t{0x0505050504040404, 0x0707070706060606})
+        vreinterpretq_u8_u64((uint64x2_t{0x0101010100000000, 0x0303030302020202})),
+        vreinterpretq_u8_u64((uint64x2_t{0x0505050504040404, 0x0707070706060606}))
     };
     auto values = vld1q_s8(iq4k_values);
     int nbl = n / QK_K;
@@ -4558,8 +4558,8 @@ void mul_mat_iq5_k_r4_q8_k(int n, const void * vx, size_t bx, const DataInfo& in
     auto m32 = vdupq_n_s8(-32);
     auto m10 = vdupq_n_u8(0x10);
     uint8x16x2_t shift_shuffle = {
-        vreinterpretq_u8_u64(uint64x2_t{0x0101010100000000, 0x0303030302020202}),
-        vreinterpretq_u8_u64(uint64x2_t{0x0505050504040404, 0x0707070706060606})
+        vreinterpretq_u8_u64((uint64x2_t{0x0101010100000000, 0x0303030302020202})),
+        vreinterpretq_u8_u64((uint64x2_t{0x0505050504040404, 0x0707070706060606}))
     };
     auto values = vld1q_s8_x2(iq5nl_values);
     int nbl = n / QK_K;

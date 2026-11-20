@@ -14,7 +14,7 @@
 // ============================== Legacy quants
 //
 
-#ifdef __x86_64__
+#ifdef __AVX2__
 
 namespace {
 
