@@ -2871,8 +2871,8 @@ struct DequantizerIQ2XXS final : public BaseDequantizer<block_iq2_xxs> {
     }
 
     static inline void prepare2(uint8x16_t * b, const uint8_t * idx, const uint64_t * signs, uint32_t sidx) {
-        b[0] = vreinterpretq_u8_u64(((uint64x2_t{iq2xxs_grid[idx[0]], iq2xxs_grid[idx[1]]})));
-        b[1] = vreinterpretq_u8_u64(((uint64x2_t{iq2xxs_grid[idx[2]], iq2xxs_grid[idx[3]]})));
+        b[0] = vreinterpretq_u8_u64((uint64x2_t{iq2xxs_grid[idx[0]], iq2xxs_grid[idx[1]]}));
+        b[1] = vreinterpretq_u8_u64((uint64x2_t{iq2xxs_grid[idx[2]], iq2xxs_grid[idx[3]]}));
         apply_signs_2(b, signs, sidx);
     }
 
@@ -3040,8 +3040,8 @@ struct DequantizerIQ3S final : public BaseDequantizer<block_iq3_s> {
             const int8x16_t& hshift, uint8x16_t * b) {
         auto vindex = vorrq_u16(idx_l, vandq_u16(vshlq_u16(vdupq_n_u16(qh), hshift), vdupq_n_u16(256)));
         const uint16_t * idx = (const uint16_t *)&vindex;
-        b[0] = vreinterpretq_u8_u32(((uint32x4_t{iq3s_grid[idx[0]], iq3s_grid[idx[1]], iq3s_grid[idx[2]], iq3s_grid[idx[3]]})));
-        b[1] = vreinterpretq_u8_u32(((uint32x4_t{iq3s_grid[idx[4]], iq3s_grid[idx[5]], iq3s_grid[idx[6]], iq3s_grid[idx[7]]})));
+        b[0] = vreinterpretq_u8_u32((uint32x4_t{iq3s_grid[idx[0]], iq3s_grid[idx[1]], iq3s_grid[idx[2]], iq3s_grid[idx[3]]}));
+        b[1] = vreinterpretq_u8_u32((uint32x4_t{iq3s_grid[idx[4]], iq3s_grid[idx[5]], iq3s_grid[idx[6]], iq3s_grid[idx[7]]}));
         sh.apply_signs_1(b+0, signs16);
         sh.apply_signs_1(b+1, signs16);
     }
@@ -3331,14 +3331,7 @@ static void mul_mat_iq3_s_r4_q8_k(int n, const void * vx, size_t bx, const DataI
                 auto signs128 = vld1q_u8(iq3[ibl].signs+16*ib);
                 if constexpr (nrc_y == 1) {
                     auto qh32 = (const uint32_t *)qh;
-                    auto idx_h = vreinterpretq_u16_u64((vreinterpretq_u64_u16(
-  vmovl_u8(
-    vreinterpret_u8_u32(
-vdup_n_u32(qh32[0])
-    )
-  )
-), int64x2_t{8, 4}));
-//                    auto idx_h = vreinterpretq_u16_u64(vshlq_u64(vreinterpretq_u64_u16(vmovl_u8(vreinterpret_u8_u32(vdup_n_u32(qh32[0])))), int64x2_t{8, 4}));
+                    auto idx_h = vreinterpretq_u16_u64(vshlq_u64(vreinterpretq_u64_u16(vmovl_u8(vreinterpret_u8_u32(vdup_n_u32(qh32[0])))), int64x2_t{8, 4}));
                     union { uint16x8_t vec; uint16_t val[8]; } hidx;
                     for (int i = 0; i < 4; ++i) {
                         auto idx_l = vmovl_u8(vld1_u8(qs));
