@@ -3448,30 +3448,8 @@ struct Scale16Extra {
         accum_mins_16(extra16, q8, acc, i, d);
         return make_wider_8(scales8);
     }
-//#if !defined(__AVX__)
     constexpr static uint32x4_t emask  = {0x02020101, 0x08080404, 0x20201010, 0x80804040};
     constexpr static uint32x4_t eshuff = {0x06040200, 0x0e0c0a08, 0x07050301, 0x0f0d0b09};
-//#else
-//constexpr static uint32_t mka_data[8] = {
-//    ka, ka1, ka2, ka3,
-//    ka4, ka5, ka6, ka7
-//};
-
-//constexpr static uint32_t mkb_data[8] = {
-//    kb, kb1, kb2, kb3,
-//    kb4, kb5, kb6, kb7
-//};
-
-//const uint32x4x2_t mka = {{
-//    _mm_loadu_si128(reinterpret_cast<const __m128i*>(&mka_data[0])),
-//    _mm_loadu_si128(reinterpret_cast<const __m128i*>(&mka_data[4]))
-//}};
-
-//const uint32x4x2_t mkb = {{
-//    _mm_loadu_si128(reinterpret_cast<const __m128i*>(&mkb_data[0])),
-//    _mm_loadu_si128(reinterpret_cast<const __m128i*>(&mkb_data[4]))
-//}};
-//#endif
 };
 
 // Note: on ARM_NEON we cannot use the values shifted into the uint8_t range because
