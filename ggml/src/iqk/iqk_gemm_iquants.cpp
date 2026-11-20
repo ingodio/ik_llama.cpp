@@ -3349,25 +3349,12 @@ static void mul_mat_iq3_s_r4_q8_k(int n, const void * vx, size_t bx, const DataI
                     for (int i = 0; i < 4; ++i) {
                         qx[2*i+0] = vreinterpretq_s8_u32((uint32x4_t{iq3s_grid[qs[0] | ((qh[0] << (8-i)) & 0x100)], iq3s_grid[qs[1] | ((qh[1] << (8-i)) & 0x100)],
                                                                     iq3s_grid[qs[2] | ((qh[2] << (8-i)) & 0x100)], iq3s_grid[qs[3] | ((qh[3] << (8-i)) & 0x100)]}));
-                        auto signs = vreinterpretq_s8_u8(
-vorrq_u8(
-  vceqq_u8(
-    vandq_u8(signs128, m1)
-  , m1)
-, m1));
+                        auto signs = vreinterpretq_s8_u8(vorrq_u8(vceqq_u8(vandq_u8(signs128, m1), m1), m1));
                         qx[2*i+0] = vmulq_s8((qx[2*i+0]), signs);
 
                         qx[2*i+1] = vreinterpretq_s8_u32((uint32x4_t{iq3s_grid[qs[4] | ((qh[0] << (4-i)) & 0x100)], iq3s_grid[qs[5] | ((qh[1] << (4-i)) & 0x100)],
                                                                     iq3s_grid[qs[6] | ((qh[2] << (4-i)) & 0x100)], iq3s_grid[qs[7] | ((qh[3] << (4-i)) & 0x100)]}));
-                        signs = vreinterpretq_s8_u8((
-vorrq_u8(
-  vceqq_u8(
-    vandq_u8(
-      vshrq_n_u8(signs128, 4)
-    , m1)
-  , m1)
-, m1)
-));
+                        signs = vreinterpretq_s8_u8((vorrq_u8(vceqq_u8(vandq_u8(vshrq_n_u8(signs128, 4), m1), m1), m1)));
                         qx[2*i+1] = vmulq_s8((qx[2*i+1]), signs);
 
                         qs += 8;
