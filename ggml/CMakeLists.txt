@@ -91,7 +91,6 @@ option(GGML_FMA         "ggml: enable FMA"              ${INS_ENB})
 if (NOT MSVC)
     option(GGML_F16C    "ggml: enable F16C"             ${INS_ENB}) # in MSVC F16C is implied with AVX2/AVX512
 endif()
-
 option(GGML_LASX        "ggml: enable lasx"             ON)
 option(GGML_LSX         "ggml: enable lsx"              ON)
 option(GGML_SVE         "ggml: enable SVE"              OFF)
