@@ -205,6 +205,13 @@ static inline __m256 v_expf(__m256 x) {
                             _mm256_mul_ps(_mm256_fmadd_ps(s2, j, s2), s1)),
               _mm256_andnot_ps(_mm256_castsi256_ps(c), _mm256_fmadd_ps(k, j, k)))));
 }
+static inline __m256 v_tanh(__m256 x) {
+    const __m256 one = _mm256_set1_ps(1.0f);
+    const __m256 exp_two_x = v_expf(_mm256_mul_ps(x, _mm256_set1_ps(2.f)));
+    const __m256 res = _mm256_div_ps(_mm256_sub_ps(exp_two_x, one), _mm256_add_ps(exp_two_x, one));
+    const __m256 mask = _mm256_cmp_ps(x, _mm256_set1_ps(10.f), _CMP_GT_OQ);
+    return _mm256_or_ps(_mm256_and_ps(mask, one), _mm256_andnot_ps(mask, res));
+}
 static inline __m256 v_gelu(__m256 x, __m256 c1, __m256 c2) {
     const __m256 one = _mm256_set1_ps(1.0f);
     const __m256 mask = _mm256_cmp_ps(x, _mm256_set1_ps(10.f), _CMP_GT_OQ);
@@ -232,15 +239,6 @@ static inline __m256 v_silu_oai(__m256 x, __m256 alpha) {
 static inline __m256 v_clamp_max(__m256 x, __m256 max) {
     auto mask = _mm256_cmp_ps(x, max, _CMP_GT_OQ);
     return _mm256_or_ps(_mm256_and_ps(mask, max), _mm256_andnot_ps(mask, x));
-}
-#endif
-#if defined(__AVX2__)
-static inline __m256 v_tanh(__m256 x) {
-    const __m256 one = _mm256_set1_ps(1.0f);
-    const __m256 exp_two_x = v_expf(_mm256_mul_ps(x, _mm256_set1_ps(2.f)));
-    const __m256 res = _mm256_div_ps(_mm256_sub_ps(exp_two_x, one), _mm256_add_ps(exp_two_x, one));
-    const __m256 mask = _mm256_cmp_ps(x, _mm256_set1_ps(10.f), _CMP_GT_OQ);
-    return _mm256_or_ps(_mm256_and_ps(mask, one), _mm256_andnot_ps(mask, res));
 }
 #endif
 #if defined(__AVX__) && !defined(__AVX2__)
