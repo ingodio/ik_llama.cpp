@@ -99,7 +99,7 @@ struct F16 {
     static inline Data fmadd_lane1(Data prev, Data v1, Data v2) { return _mm512_fmadd_ps(v1, _mm512_shuffle_ps(v2, v2, 0x55), prev); }
     static inline Data fmadd_lane2(Data prev, Data v1, Data v2) { return _mm512_fmadd_ps(v1, _mm512_shuffle_ps(v2, v2, 0xaa), prev); }
     static inline Data fmadd_lane3(Data prev, Data v1, Data v2) { return _mm512_fmadd_ps(v1, _mm512_shuffle_ps(v2, v2, 0xff), prev); }
-#elif defined(__AVX2__)
+#elif defined __AVX2__
     using Data = __m256;
     constexpr static int block_size = 8;
     constexpr static int num_registers = 16;
@@ -136,6 +136,7 @@ struct F16 {
     constexpr static int block_size = 8;
     //constexpr static int num_registers = 32;
     //constexpr static int q_step = 8;
+    static inline Data zero() { return vdupq_n_f16(0); }
     static inline Data load(const char * ptr, int i) { return vld1q_f16((const float16_t *)ptr + block_size*i); }
     static inline Data load(const float16_t * ptr, int i) { return vld1q_f16(ptr + block_size*i); }
     static inline Data load(const float16_t * ptr) { return vld1q_f16(ptr); }
@@ -224,7 +225,11 @@ struct HelperQ8KV final : public BaseHelper {
     inline void load(int l1, int i, F16::Data& v1, F16::Data& v2) const {
         auto q8 = (const block_q8_KV<D> *)Base::lblock(l1);
         auto vd = F16::set1(q8->d);
-#ifdef __AVX512F__
+#if defined(__aarch64__) && !defined(__AVX__)
+        auto qs = vld1_s8_x2(q8->qs + 8*i);
+        v1 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[0])));
+        v2 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[1])));
+#elif defined __AVX512F__
         v1 = _mm512_mul_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(_mm_loadu_si128((const __m128i *)q8->qs+i+0))));
         v2 = _mm512_mul_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(_mm_loadu_si128((const __m128i *)q8->qs+i+1))));
 #elif defined  __AVX2__
@@ -253,10 +258,6 @@ struct HelperQ8KV final : public BaseHelper {
             _mm256_castps128_ps256(f1), f1_hi, 1));
         v2 = _mm256_mul_ps(vd, _mm256_insertf128_ps(
             _mm256_castps128_ps256(f2), f2_hi, 1));
-#elif defined __aarch64__
-        auto qs = vld1_s8_x2(q8->qs + 8*i);
-        v1 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[0])));
-        v2 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[1])));
 #endif
     }
 };
