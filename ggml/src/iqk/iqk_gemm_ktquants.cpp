@@ -10,6 +10,7 @@
 #include "ggml-common.h"
 
 #if defined( __AVX2__)
+
 namespace {
 
 inline uint32_t trellis_next(uint32_t& val) {
