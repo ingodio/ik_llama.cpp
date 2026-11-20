@@ -97,14 +97,10 @@ struct QFBase {
         return _mm256_insertf128_ps(_mm256_setzero_ps(), load128(x), 0);
     }
 #endif
-#if defined(__AVX__)
-//TODO
+
+#if defined(__AVX__) && !defined(__AVX2__)
 static inline __m256 FMADD_PS(__m256 a, __m256 b, __m256 c) {
-  #if defined(__FMA__)
-    return _mm256_fmadd_ps(a, b, c);
-  #else
     return _mm256_add_ps(_mm256_mul_ps(a, b), c);
-  #endif
 }
     constexpr static int k_step = 8;
     using Data = __m256;
@@ -112,20 +108,11 @@ static inline __m256 FMADD_PS(__m256 a, __m256 b, __m256 c) {
     static inline Data load(const ggml_bf16_t * x) {
         const __m128i v = _mm_loadu_si128((const __m128i *) x);
         const __m128i zero = _mm_setzero_si128();
-
-        const __m128i lo = _mm_slli_epi32(
-            _mm_unpacklo_epi16(v, zero), 16);
-
-        const __m128i hi = _mm_slli_epi32(
-            _mm_unpackhi_epi16(v, zero), 16);
-
-        return _mm256_castsi256_ps(
-            _mm256_insertf128_si256(
-                _mm256_castsi128_si256(lo), hi, 1));
+        const __m128i lo = _mm_slli_epi32(_mm_unpacklo_epi16(v, zero), 16);
+        const __m128i hi = _mm_slli_epi32(_mm_unpackhi_epi16(v, zero), 16);
+        return _mm256_castsi256_ps(_mm256_insertf128_si256(_mm256_castsi128_si256(lo), hi, 1));
     }
-    static inline Acc acc(Acc prev, const __m256& y, const __m256& x) {
-        return FMADD_PS(y, x, prev);
-    }
+    static inline Acc acc(Acc prev, const __m256& y, const __m256& x) {return FMADD_PS(y, x, prev);}
     static inline Acc acc_r4(Acc acc, const Data * xv, const Data& yv) {
         acc = FMADD_PS(xv[0], _mm256_shuffle_ps(yv, yv, 0x00), acc);
         acc = FMADD_PS(xv[1], _mm256_shuffle_ps(yv, yv, 0x55), acc);
@@ -133,7 +120,7 @@ static inline __m256 FMADD_PS(__m256 a, __m256 b, __m256 c) {
         acc = FMADD_PS(xv[3], _mm256_shuffle_ps(yv, yv, 0xff), acc);
         return acc;
     }
-#endif
+#endif //AVX+
     static inline __m128 load128(const ggml_half * x) { return _mm_cvtph_ps(_mm_loadl_epi64((const __m128i *)x)); }
     static inline __m128 load128(const float * x) { return _mm_loadu_ps(x); }
     static inline __m128 load128(const ggml_bf16_t * x) {
@@ -769,21 +756,8 @@ struct QF16Base {
     constexpr static int k_step = 8;
     using Data = float16x8_t;
     using Acc  = float16x8_t;
-    static inline Data load(const simde_float16_t * x) { return vld1q_f16(x); }
-//#if !defined(__AVX__)
-    static inline Data load4(const simde_float16_t * x) { return vcombine_f16(vld1_f16(x), vdup_n_f16(0)); }
-//#else
-//    static inline Data load4(const simde_float16_t *x)
-//    {
-//        float16x8_t result;
-//        result.val[0] = _mm_set_ps(
-//            (float)x[3], (float)x[2],
-//            (float)x[1], (float)x[0]
-//        );
-//        result.val[1] = _mm_setzero_ps();
-//        return result;
-//    }
-//#endif
+    static inline Data load(const float16_t * x) { return vld1q_f16(x); }
+    static inline Data load4(const float16_t * x) { return vcombine_f16(vld1_f16(x), vdup_n_f16(0)); }
     static inline Acc acc(Acc prev, const Data& y, const Data& x) {
         return vfmaq_f16(prev, y, x);
     }
@@ -792,7 +766,7 @@ struct QF16Base {
     }
     //constexpr static int k_step = 16;
     //using Data = float16x8x2_t;
-    //static inline Data load(const simde_float16_t * x) { return vld1q_f16_x2(x); }
+    //static inline Data load(const float16_t * x) { return vld1q_f16_x2(x); }
     //static inline Acc acc(Acc prev, const Data& y, const Data& x) {
     //    return vfmaq_f16(vfmaq_f16(prev, y.val[0], x.val[0]), y.val[1], x.val[1]);
     //}
@@ -808,15 +782,15 @@ template <int nrc> struct QF16 final : public QF16Base {
     using Base = QF16Base;
     constexpr static int nrc_y = nrc;
     QF16(const DataInfo& info) {
-        for (int iy = 0; iy < nrc_y; ++iy) y[iy] = (const simde_float16_t *)info.src1_row(iy);
+        for (int iy = 0; iy < nrc_y; ++iy) y[iy] = (const float16_t *)info.src1_row(iy);
     }
     QF16(const char * cx, size_t bx) {
-        for (int iy = 0; iy < nrc_y; ++iy) y[iy] = (const simde_float16_t *)(cx + iy*bx);
+        for (int iy = 0; iy < nrc_y; ++iy) y[iy] = (const float16_t *)(cx + iy*bx);
     }
     IQK_ALWAYS_INLINE Data load1(int iy, int i) const { return load(y[iy] + k_step*i); }
     IQK_ALWAYS_INLINE Data load_tail(int iy, int i) const { return load4(y[iy] + 4*i); }
     IQK_ALWAYS_INLINE float16x8x4_t loadx(int iy, int i) const { return vld1q_f16_x4(y[iy] + 4*k_step*i); }
-    const simde_float16_t * y[nrc_y];
+    const float16_t * y[nrc_y];
 };
 
 struct QBF16Base {
