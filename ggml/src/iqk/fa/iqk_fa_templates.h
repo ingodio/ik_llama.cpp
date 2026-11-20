@@ -116,9 +116,26 @@ struct F16 {
     static inline float reduce_add(Data data) { return hsum_float_8(data); }
     static inline Data max(Data v1, Data v2) { return _mm256_max_ps(v1, v2); }
     static inline Data add(Data v1, Data v2) { return _mm256_add_ps(v1, v2); }
+    static inline Data set4(const float * ptr) {
+        auto v128 = _mm_loadu_ps(ptr);
+        return _mm256_set_m128(v128, v128);
+    }
+    static inline void set4(const float * ptr, Data * vs) {
+        auto v = set4(ptr);
+        vs[0] = _mm256_shuffle_ps(v, v, 0x00);
+        vs[1] = _mm256_shuffle_ps(v, v, 0x55);
+        vs[2] = _mm256_shuffle_ps(v, v, 0xaa);
+        vs[3] = _mm256_shuffle_ps(v, v, 0xff);
+    }
+    static inline Data fmadd_lane0(Data prev, Data v1, Data v2) { return _mm256_fmadd_ps(v1, _mm256_shuffle_ps(v2, v2, 0x00), prev); }
+    static inline Data fmadd_lane1(Data prev, Data v1, Data v2) { return _mm256_fmadd_ps(v1, _mm256_shuffle_ps(v2, v2, 0x55), prev); }
+    static inline Data fmadd_lane2(Data prev, Data v1, Data v2) { return _mm256_fmadd_ps(v1, _mm256_shuffle_ps(v2, v2, 0xaa), prev); }
+    static inline Data fmadd_lane3(Data prev, Data v1, Data v2) { return _mm256_fmadd_ps(v1, _mm256_shuffle_ps(v2, v2, 0xff), prev); }
 #else
+    using Data = float16x8_t;
     constexpr static int block_size = 8;
-    static inline Data zero() { return vdupq_n_f16(0); }
+    //constexpr static int num_registers = 32;
+    //constexpr static int q_step = 8;
     static inline Data load(const char * ptr, int i) { return vld1q_f16((const float16_t *)ptr + block_size*i); }
     static inline Data load(const float16_t * ptr, int i) { return vld1q_f16(ptr + block_size*i); }
     static inline Data load(const float16_t * ptr) { return vld1q_f16(ptr); }
