@@ -10,7 +10,7 @@
 #undef IQK_IMPLEMENT
 #endif
 
-#if defined __AVX2__ || defined __ARM_FEATURE_DOTPROD
+#if defined __AVX2__ || defined __ARM_FEATURE_DOTPROD || __AVX__
 #define IQK_IMPLEMENT
 #endif
 

@@ -61,19 +61,6 @@ static inline float32x4_t v_silu(float32x4_t x) {
     const float32x4_t one_plus_exp_neg_x = vaddq_f32(one, exp_neg_x);
     return vdivq_f32(x, one_plus_exp_neg_x);
 }
-static inline float32x4_t v_situ(float32x4_t x, float beta) {
-    const float32x4_t b = vdupq_n_f32(beta);
-    const float32x4_t inv_b = vdupq_n_f32(1.0f/beta);
-    const float32x4_t one = vdupq_n_f32(1.0f);
-    const float32x4_t soft = vmulq_f32(b, v_tanh(vmulq_f32(x, inv_b)));
-    const float32x4_t sig = vdivq_f32(one, vaddq_f32(one, v_expf(vsubq_f32(vdupq_n_f32(0.0f), x))));
-    return vmulq_f32(soft, sig);
-}
-static inline float32x4_t v_situ_up(float32x4_t x, float beta) {
-    const float32x4_t b = vdupq_n_f32(beta);
-    const float32x4_t inv_b = vdupq_n_f32(1.0f/beta);
-    return vmulq_f32(b, v_tanh(vmulq_f32(x, inv_b)));
-}
 static inline float32x4_t v_silu_oai(float32x4_t x, float32x4_t alpha) {
     const float32x4_t one = vdupq_n_f32(1.0f);
     const float32x4_t neg_x = vmulq_f32(alpha, x);
@@ -161,19 +148,6 @@ static inline __m512 v_silu(__m512 x) {
     const __m512 one_plus_exp_neg_x = _mm512_add_ps(one, exp_neg_x);
     return _mm512_div_ps(x, one_plus_exp_neg_x);
 }
-static inline __m512 v_situ(__m512 x, float beta) {
-    const __m512 b = _mm512_set1_ps(beta);
-    const __m512 inv_b = _mm512_set1_ps(1.0f/beta);
-    const __m512 one = _mm512_set1_ps(1.0f);
-    const __m512 soft = _mm512_mul_ps(b, v_tanh(_mm512_mul_ps(x, inv_b)));
-    const __m512 sig = _mm512_div_ps(one, _mm512_add_ps(one, v_expf(_mm512_sub_ps(_mm512_setzero_ps(), x))));
-    return _mm512_mul_ps(soft, sig);
-}
-static inline __m512 v_situ_up(__m512 x, float beta) {
-    const __m512 b = _mm512_set1_ps(beta);
-    const __m512 inv_b = _mm512_set1_ps(1.0f/beta);
-    return _mm512_mul_ps(b, v_tanh(_mm512_mul_ps(x, inv_b)));
-}
 static inline __m512 v_silu_oai(__m512 x, __m512 alpha) {
     const __m512 one = _mm512_set1_ps(1);
     const __m512 neg_x = _mm512_mul_ps(alpha, x);
@@ -255,19 +229,6 @@ static inline __m256 v_silu(__m256 x) {
     const __m256 one_plus_exp_neg_x = _mm256_add_ps(one, exp_neg_x);
     return _mm256_div_ps(x, one_plus_exp_neg_x);
 }
-static inline __m256 v_situ(__m256 x, float beta) {
-    const __m256 b = _mm256_set1_ps(beta);
-    const __m256 inv_b = _mm256_set1_ps(1.0f/beta);
-    const __m256 one = _mm256_set1_ps(1.0f);
-    const __m256 soft = _mm256_mul_ps(b, v_tanh(_mm256_mul_ps(x, inv_b)));
-    const __m256 sig = _mm256_div_ps(one, _mm256_add_ps(one, v_expf(_mm256_sub_ps(_mm256_setzero_ps(), x))));
-    return _mm256_mul_ps(soft, sig);
-}
-static inline __m256 v_situ_up(__m256 x, float beta) {
-    const __m256 b = _mm256_set1_ps(beta);
-    const __m256 inv_b = _mm256_set1_ps(1.0f/beta);
-    return _mm256_mul_ps(b, v_tanh(_mm256_mul_ps(x, inv_b)));
-}
 static inline __m256 v_silu_oai(__m256 x, __m256 alpha) {
     const __m256 one = _mm256_set1_ps(1);
     const __m256 neg_x = _mm256_mul_ps(alpha, x);
@@ -279,7 +240,54 @@ static inline __m256 v_clamp_max(__m256 x, __m256 max) {
     auto mask = _mm256_cmp_ps(x, max, _CMP_GT_OQ);
     return _mm256_or_ps(_mm256_and_ps(mask, max), _mm256_andnot_ps(mask, x));
 }
+#endif
+#if defined(__AVX__) && !defined(__AVX2__)
+static inline __m128 v_tanh(__m128 x) {
+    const __m128 one = _mm_set1_ps(1.0f);
+    const __m128 exp_two_x = v_expf128(_mm_mul_ps(x, _mm_set1_ps(2.0f)));
+    const __m128 res = _mm_div_ps(_mm_sub_ps(exp_two_x, one),_mm_add_ps(exp_two_x, one));
+    const __m128 hi = _mm_cmpgt_ps(x, _mm_set1_ps(10.0f));
+    const __m128 lo = _mm_cmplt_ps(x, _mm_set1_ps(-10.0f));
+    return _mm_or_ps(_mm_and_ps(hi, one),
+        _mm_or_ps(_mm_and_ps(lo, _mm_set1_ps(-1.0f)),
+            _mm_andnot_ps(_mm_or_ps(hi, lo), res))
+    );
+}
+static inline __m128 v_expf(__m128 x)
+{
+    const __m128 one = _mm_set1_ps(1.0f);
+    // Clamp to avoid integer conversion and exponent overflow.
+    x = _mm_min_ps(x, _mm_set1_ps(88.0f));
+    x = _mm_max_ps(x, _mm_set1_ps(-87.0f));
+    // Range reduction: x = n * ln(2) + r
+    const __m128 log2e = _mm_set1_ps(1.44269504088896341f);
+    __m128 fx = _mm_add_ps(_mm_mul_ps(x, log2e), _mm_set1_ps(12582912.0f));
+    fx = _mm_sub_ps(fx, _mm_set1_ps(12582912.0f));
+    __m128 r = _mm_sub_ps(x, _mm_mul_ps(fx, _mm_set1_ps(0.693359375f)));
+    r = _mm_sub_ps(r, _mm_mul_ps(fx, _mm_set1_ps(-0.00021219444005f)));
+    // Cephes polynomial approximation.
+    const __m128 c1 = _mm_set1_ps(1.9875691500e-4f);
+    const __m128 c2 = _mm_set1_ps(1.3981999507e-3f);
+    const __m128 c3 = _mm_set1_ps(8.3334519073e-3f);
+    const __m128 c4 = _mm_set1_ps(4.1665795894e-2f);
+    const __m128 c5 = _mm_set1_ps(1.6666665459e-1f);
+    const __m128 c6 = _mm_set1_ps(5.0000001201e-1f);
 
-#endif // __AVX2__
+    const __m128 r2 = _mm_mul_ps(r, r);
 
+    const __m128 r4 = _mm_mul_ps(r2, r2);
+    const __m128 p0 = _mm_add_ps(c1, _mm_mul_ps(c2, r));
+    const __m128 p1 = _mm_add_ps(c3, _mm_mul_ps(c4, r));
+    const __m128 p2 = _mm_add_ps(c5, _mm_mul_ps(c6, r));
+    const __m128 p01 = _mm_add_ps(p0, _mm_mul_ps(p1, r2));
+    const __m128 p = _mm_add_ps(p01, _mm_mul_ps(p2, r4));
+    const __m128 er = _mm_add_ps(one, _mm_add_ps(r, _mm_mul_ps(r2, p)));
+    // Construct 2^n.
+    __m128i ni = _mm_cvttps_epi32(fx);
+    ni = _mm_add_epi32(ni, _mm_set1_epi32(127));
+    ni = _mm_slli_epi32(ni, 23);
+    const __m128 scale = _mm_castsi128_ps(ni);
+    return _mm_mul_ps(er, scale);
+}
+#endif // AVX
 #endif // IQK_IMPLEMENT

@@ -224,20 +224,40 @@ struct HelperQ8KV final : public BaseHelper {
     // Needed for v * softmax(k * q)
     inline void load(int l1, int i, F16::Data& v1, F16::Data& v2) const {
         auto q8 = (const block_q8_KV<D> *)Base::lblock(l1);
-#ifdef __aarch64__
         auto vd = F16::set1(q8->d);
+#if defined(__aarch64__) && !defined(__AVX__)
         auto qs = vld1_s8_x2(q8->qs + 8*i);
         v1 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[0])));
         v2 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[1])));
-#else
-        auto vd = F16::set1(q8->d);
-#ifdef __AVX512F__
+#elif defined __AVX512F__
         v1 = _mm512_mul_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(_mm_loadu_si128((const __m128i *)q8->qs+i+0))));
         v2 = _mm512_mul_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(_mm_loadu_si128((const __m128i *)q8->qs+i+1))));
-#else
+#elif defined  __AVX2__
         v1 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_loadl_epi64((const __m128i *)(q8->qs+8*i+0)))));
         v2 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_loadl_epi64((const __m128i *)(q8->qs+8*i+8)))));
-#endif
+#elif defined __AVX__
+        __m128i q1 = _mm_loadl_epi64(
+            (const __m128i *)(q8->qs + 8*i));
+        __m128i q2 = _mm_loadl_epi64(
+            (const __m128i *)(q8->qs + 8*i + 8));
+        // Sign-extend int8 -> int16 -> int32
+        __m128i s1 = _mm_cmpgt_epi8(_mm_setzero_si128(), q1);
+        __m128i s2 = _mm_cmpgt_epi8(_mm_setzero_si128(), q2);
+        __m128i w1 = _mm_unpacklo_epi8(q1, s1);
+        __m128i w2 = _mm_unpacklo_epi8(q2, s2);
+        __m128i a1 = _mm_cvtepi16_epi32(w1);
+        __m128i a2 = _mm_cvtepi16_epi32(w2);
+        __m128 f1 = _mm_cvtepi32_ps(a1);
+        __m128 f2 = _mm_cvtepi32_ps(a2);
+        // Combine 4 + 4 floats into 8 floats
+        __m128i q1_hi = _mm_unpackhi_epi8(q1, s1);
+        __m128i q2_hi = _mm_unpackhi_epi8(q2, s2);
+        __m128 f1_hi = _mm_cvtepi32_ps(_mm_cvtepi16_epi32(q1_hi));
+        __m128 f2_hi = _mm_cvtepi32_ps(_mm_cvtepi16_epi32(q2_hi));
+        v1 = _mm256_mul_ps(vd, _mm256_insertf128_ps(
+            _mm256_castps128_ps256(f1), f1_hi, 1));
+        v2 = _mm256_mul_ps(vd, _mm256_insertf128_ps(
+            _mm256_castps128_ps256(f2), f2_hi, 1));
 #endif
     }
 };
@@ -256,25 +276,44 @@ struct HelperQ80 final : public BaseHelper {
     HelperQ80(const char * data, int stride) : Base(data, stride) {}
 
     // Needed for v * softmax(k * q)
+#if defined(__AVX__) && !defined(__AVX512F__)
+    inline void load(int l1, int i, __m256& v1, __m256& v2) const {
+        int j = F16::block_size*i;
+        auto dl = (const block_q8_0 *)Base::lblock(l1) + j/QK8_0;
+        __m256 vd = _mm256_set1_ps(GGML_FP16_TO_FP32(dl->d));
+#else
     inline void load(int l1, int i, F16::Data& v1, F16::Data& v2) const {
         int j = F16::block_size*i;
         auto dl = (const block_q8_0 *)Base::lblock(l1) + j/QK8_0;
-#ifdef __aarch64__
         auto vd = F16::set1(GGML_FP16_TO_FP32(dl->d));
+  #if defined(__aarch64__)
         int ii = j%QK8_0;
         auto qs = vld1_s8_x2(dl->qs + ii);
         v1 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[0])));
         v2 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[1])));
-#else
-        auto vd = F16::set1(GGML_FP16_TO_FP32(dl->d));
-#ifdef __AVX512F__
+  #endif
+#endif
+#if defined __AVX512F__
         v1 = _mm512_mul_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(_mm_loadu_si128((const __m128i *)dl->qs+0))));
         v2 = _mm512_mul_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(_mm_loadu_si128((const __m128i *)dl->qs+1))));
-#else
+#elif defined __AVX2__
         int ii = j%QK8_0;
         v1 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_loadl_epi64((const __m128i *)(dl->qs+ii+0)))));
         v2 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_loadl_epi64((const __m128i *)(dl->qs+ii+8)))));
-#endif
+#elif defined __AVX__
+    int ii = j % QK8_0;
+    __m128i q1 = _mm_loadl_epi64((const __m128i *)(dl->qs + ii));
+    __m128i q2 = _mm_loadl_epi64((const __m128i *)(dl->qs + ii + 8));
+    __m128i s1 = _mm_cmpgt_epi8(_mm_setzero_si128(), q1);
+    __m128i s2 = _mm_cmpgt_epi8(_mm_setzero_si128(), q2);
+    __m128i w1 = _mm_unpacklo_epi8(q1, s1);
+    __m128i w2 = _mm_unpacklo_epi8(q2, s2);
+    __m128 f1 = _mm_cvtepi32_ps(_mm_cvtepi16_epi32(w1));
+    __m128 f1_hi = _mm_cvtepi32_ps(_mm_cvtepi16_epi32(_mm_unpackhi_epi8(q1, s1)));
+    __m128 f2 = _mm_cvtepi32_ps(_mm_cvtepi16_epi32(w2));
+    __m128 f2_hi = _mm_cvtepi32_ps(_mm_cvtepi16_epi32(_mm_unpackhi_epi8(q2, s2)));
+    v1 = _mm256_mul_ps(vd, _mm256_insertf128_ps(_mm256_castps128_ps256(f1), f1_hi, 1));
+    v2 = _mm256_mul_ps(vd, _mm256_insertf128_ps(_mm256_castps128_ps256(f2), f2_hi, 1));
 #endif
     }
 
@@ -518,11 +557,16 @@ struct HelperQ8KVR8 : public BaseHelper {
                 vst1q_s8_x2(y[ix].qs + 64 + 128*ib, m2);
                 vst1q_s8_x2(y[ix].qs + 96 + 128*ib, m3);
 #else
-                // TODO
+                // Scalar fallback
                 for (int l = 0; l < 4; ++l) {
-                    for (int k = 0; k < 8; ++k) for (int i = 0; i < 4; ++i) {
-                        y[ib].qs[32*l+4*k+i+  0] = x8[k][ib].qs[i+4*l+ 0];
-                        y[ib].qs[32*l+4*k+i+128] = x8[k][ib].qs[i+4*l+16];
+                    for (int k = 0; k < 8; ++k) {
+                        for (int i = 0; i < 4; ++i) {
+                            y[ix].qs[32*l + 4*k + i] =
+                                x8[k][16*ib + 4*l + i];
+
+                            y[ix].qs[32*l + 4*k + i + 128] =
+                                x8[k][16*ib + 4*l + 16 + i];
+                        }
                     }
                 }
 #endif
@@ -557,20 +601,20 @@ struct HelperQ40 final : public BaseHelper {
         q = vaddq_s8(q, m8);
         v1 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(vget_low_s8(q))));
         v2 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(vget_high_s8(q))));
-#else
+#elif __AVX2__
         auto vd = F16::set1(GGML_FP16_TO_FP32(dl->d));
         auto q  = _mm_loadu_si128((const __m128i *)dl->qs);
+#endif
 #ifdef __AVX512F__
         auto ql = _mm_add_epi8(_mm_and_si128(q, mask), m8);
         auto qh = _mm_add_epi8(_mm_and_si128(_mm_srli_epi16(q, 4), mask), m8);
         v1 = _mm512_mul_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(ql)));
         v2 = _mm512_mul_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(qh)));
-#else
+#elif __AVX2__
         if (j%QK4_0) q = _mm_srli_epi16(q, 4);
         auto q16 = _mm256_cvtepi8_epi16(_mm_add_epi8(_mm_and_si128(q, mask), m8));
         v1 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(_mm256_castsi256_si128(q16))));
         v2 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(_mm256_extracti128_si256(q16, 1))));
-#endif
 #endif
     }
 
@@ -601,21 +645,21 @@ struct HelperQ41 final : public BaseHelper {
         q = (j%QK4_1) ? vshrq_n_u8(q, 4) : vandq_u8(q, mask);
         v1 = vfmaq_f16(vm, vd, vcvtq_f16_u16(vmovl_u8(vget_low_u8(q))));
         v2 = vfmaq_f16(vm, vd, vcvtq_f16_u16(vmovl_u8(vget_high_u8(q))));
-#else
+#eldef __AVX2__
         auto vd = F16::set1(GGML_FP16_TO_FP32(dl->d));
         auto vm = F16::set1(GGML_FP16_TO_FP32(dl->m));
         auto q  = _mm_loadu_si128((const __m128i *)dl->qs);
+#endif
 #ifdef __AVX512F__
         auto ql = _mm_and_si128(q, mask);
         auto qh = _mm_and_si128(_mm_srli_epi16(q, 4), mask);
         v1 = _mm512_fmadd_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(ql)), vm);
         v2 = _mm512_fmadd_ps(vd, _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(qh)), vm);
-#else
+#elif __AVX2__
         if (j%QK4_1) q = _mm_srli_epi16(q, 4);
         auto q16 = _mm256_cvtepi8_epi16(_mm_and_si128(q, mask));
         v1 = _mm256_fmadd_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(_mm256_castsi256_si128(q16))), vm);
         v2 = _mm256_fmadd_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(_mm256_extracti128_si256(q16, 1))), vm);
-#endif
 #endif
     }
 
@@ -1156,11 +1200,11 @@ struct FlashQKV {
     }
 
     template <typename FMS>
-    inline void normalize_and_store_1row(const FMS& fms, int j, qkv_cache_t * R, float * qkv, const float * sinkf, int sink_stride) const {
+    inline void normalize_and_store_1row(const FMS& fms, int j, qkv_cache_t * R, float * qkv, const float * sinkf) const {
         static_assert(q_step == FMS::q_step);
         float S = fms.S[j];
         if (sinkf) {
-            float s = sinkf[j*sink_stride];
+            float s = *sinkf;
             if (s > fms.M[j]) {
                 float m = expf(fms.M[j] - s);
                 auto vm = F16::set1(m);
@@ -1187,7 +1231,7 @@ struct FlashQKV {
     }
 
     template <typename FMS>
-    inline void normalize_and_store(const FMS& fms, int nq1, int stride_qkv, float * qkv, const float * sinkf, int sink_stride, float * M, float * S) {
+    inline void normalize_and_store(const FMS& fms, int nq1, int stride_qkv, float * qkv, const float * sinkf, float * M, float * S) {
         static_assert(q_step == FMS::q_step);
         if (M && S) {
             std::memcpy(M, fms.M, nq1*sizeof(float));
@@ -1207,7 +1251,7 @@ struct FlashQKV {
         } else {
             auto R = qkv_cache;
             for (int j = 0; j < nq1; ++j) {
-                normalize_and_store_1row(fms, j, R, qkv, sinkf, sink_stride);
+                normalize_and_store_1row(fms, j, R, qkv, sinkf);
                 qkv += stride_qkv;
                 R   += D;
             }
@@ -1215,7 +1259,7 @@ struct FlashQKV {
     }
 
     template <typename FMS>
-    inline void normalize_and_store(const FMS& fms, int stride_qkv, float * qkv, const float * sinkf, int sink_stride, float * M, float * S) {
+    inline void normalize_and_store(const FMS& fms, int stride_qkv, float * qkv, const float * sinkf, float * M, float * S) {
         static_assert(q_step == FMS::q_step);
         if (M && S) {
             std::memcpy(M, fms.M, q_step*sizeof(float));
@@ -1235,7 +1279,7 @@ struct FlashQKV {
         } else {
             auto R = qkv_cache;
             for (int j = 0; j < q_step; ++j) {
-                normalize_and_store_1row(fms, j, R, qkv, sinkf, sink_stride);
+                normalize_and_store_1row(fms, j, R, qkv, sinkf);
                 qkv += stride_qkv;
                 R   += D;
             }
@@ -1316,7 +1360,7 @@ struct FlashQKfp32 {
             const block_q8 * q, const char * mask, FlashMS<q_step, k_step>& fms) {
         // As far as I can tell, this static assert is a remnant of the times where the matrix multiplications were done inline
         // here with bespoke kernels instead of just using the regular mat mul kernels. But, just in case, leaving it in place
-        // but commented out.
+        // but commneted out.
         //constexpr int kMaxQ = 8;
         //static_assert(q_step < kMaxQ || q_step%kMaxQ == 0);
         DataInfo info{fms.cache, (const char *)q, k_step, (D/KHelper::block_size_q)*sizeof(block_q8), 0, 1, nullptr};
@@ -1369,7 +1413,7 @@ void compute_helper(KHelper& kh, VHelper& vh, int nq1, int nk1, int stride_q, in
         FlashMS<q_step, k_step>& fms,
         FlashQKV<Dv, q_step, k_step>& fqkv,
         const float * q, const char * mask, float * qkv,
-        const float * sinkf, int sink_stride, float * M, float * S) {
+        const float * sinkf, float * M, float * S) {
 #ifdef __aarch64__
     float16_t q_f16[Dk*q_step];
 #endif
@@ -1394,13 +1438,12 @@ void compute_helper(KHelper& kh, VHelper& vh, int nq1, int nk1, int stride_q, in
             vh.next_block(k_step);
             mr += k_step*sizeof(ggml_half);
         }
-        fqkv.normalize_and_store(fms, stride_qkv, qkv, sinkf, sink_stride, M, S);
+        fqkv.normalize_and_store(fms, stride_qkv, qkv, sinkf, M, S);
 
         q    += q_step*stride_q;
         mask += q_step*stride_m;
         qkv  += q_step*stride_qkv;
         if (M && S) { M += q_step; S += q_step; }
-        if (sinkf) sinkf += q_step*sink_stride;
     }
     int n_left = nq1 - q_step*(nq1/q_step);
     if (n_left > 0) {
@@ -1422,7 +1465,7 @@ void compute_helper(KHelper& kh, VHelper& vh, int nq1, int nk1, int stride_q, in
             vh.next_block(k_step);
             mr += k_step*sizeof(ggml_half);
         }
-        fqkv.normalize_and_store(fms, n_left, stride_qkv, qkv, sinkf, sink_stride, M, S);
+        fqkv.normalize_and_store(fms, n_left, stride_qkv, qkv, sinkf, M, S);
     }
 }
 
@@ -1431,7 +1474,7 @@ void compute_helper_q(KHelper& kh, VHelper& vh, int nq1, int nk1, int stride_q, 
         FlashMS<q_step, k_step>& fms,
         FlashQKV<Dv, q_step, k_step>& fqkv,
         const float * q, const char * mask, float * qkv,
-        const float * sinkf, int sink_stride, float * M, float * S, char * qptr) {
+        const float * sinkf, float * M, float * S, char * qptr) {
     auto q8 = (typename KHelper::block_q8 *)qptr;
     // This optimization fails under certain conditions (see https://github.com/ikawrakow/ik_llama.cpp/issues/1205)
     // => disabling until I figure out what goes wrong
@@ -1454,7 +1497,7 @@ void compute_helper_q(KHelper& kh, VHelper& vh, int nq1, int nk1, int stride_q, 
                 vh.next_block(k_step);
                 mr += k_step*sizeof(ggml_half);
             }
-            fqkv.normalize_and_store(fms, stride_qkv, qkv, sinkf, sink_stride, M, S);
+            fqkv.normalize_and_store(fms, stride_qkv, qkv, sinkf, M, S);
             return;
         }
     }
@@ -1492,17 +1535,16 @@ void compute_helper_q(KHelper& kh, VHelper& vh, int nq1, int nk1, int stride_q, 
         }
 #if FA_TIMING
         t1 = Perf::cur_time();
-        fqkv.normalize_and_store(fms, stride_qkv, qkv, sinkf, sink_stride, M, S);
+        fqkv.normalize_and_store(fms, stride_qkv, qkv, sinkf, M, S);
         perf.accum_nolock(3, t1);
 #else
-        fqkv.normalize_and_store(fms, stride_qkv, qkv, sinkf, sink_stride, M, S);
+        fqkv.normalize_and_store(fms, stride_qkv, qkv, sinkf, M, S);
 #endif
 
         q    += q_step*stride_q;
         mask += q_step*stride_m;
         qkv  += q_step*stride_qkv;
         if (M && S) { M += q_step; S += q_step; }
-        if (sinkf) sinkf += q_step*sink_stride;
     }
     int n_left = nq1 - q_step*(nq1/q_step);
     if (n_left > 0) {
@@ -1518,7 +1560,7 @@ void compute_helper_q(KHelper& kh, VHelper& vh, int nq1, int nk1, int stride_q, 
             vh.next_block(k_step);
             mr += k_step*sizeof(ggml_half);
         }
-        fqkv.normalize_and_store(fms, n_left, stride_qkv, qkv, sinkf, sink_stride, M, S);
+        fqkv.normalize_and_store(fms, n_left, stride_qkv, qkv, sinkf, M, S);
     }
 #if FA_TIMING
     Perf::instance().add(perf);
@@ -1534,7 +1576,7 @@ char * get_q_storage(size_t size) {
 // Some of the methods in FlashAttn have two identical implementations that only differ by
 // one version using a loop over the template parameter q_step, while the other using a loop
 // over an input parameter nq (these are loops over the rows of q^T). I dislike this a lot,
-// but performance drops significantly if I remove the version with fixed q_step iterations.
+// but performance drops signficantly if I remove the version with fixed q_step iterations.
 // We only instantiate FlashAttn with q_step = 1 and q_step = 4 or 8 (depending on head size D),
 // so when we have to process Nq rows, we process q_step*(Nq/q_step) using fixed q_step loops,
 // and use the variable nq version (with lower performance) only for the remaining i1...q_step-1
@@ -1548,8 +1590,7 @@ struct FlashAttn {
     static_assert(k_step%F16::block_size == 0);
     static_assert(q_step <= 4 || q_step%4 == 0);
 
-    FlashAttn(float scale, float softcap, const float * sinkf, int sink_stride) : fms(scale, softcap),
-        sinkf(sinkf), sink_stride(sink_stride) {}
+    FlashAttn(float scale, float softcap, const float * sinkf) : fms(scale, softcap), sinkf(sinkf) {}
 
     template <typename KHelper, typename VHelper>
     void compute(KHelper& kh, VHelper& vh, int nq1, int nk1, int stride_q, int stride_m, int stride_qkv,
@@ -1578,7 +1619,7 @@ struct FlashAttn {
                         HelperQ80R8<Dk> khr4(nk1, kh);
 #endif
                         compute_helper_q<Dk, Dv, q_step, k_step, HelperQ80R8<Dk>, VHelper, FlashQKfp32<Dk, q_step, k_step>>(
-                                khr4, vh, nq1, nk1, stride_q, stride_m, stride_qkv, fms, fqkv, q, mask, qkv, sinkf, sink_stride, M, S, qptr);
+                                khr4, vh, nq1, nk1, stride_q, stride_m, stride_qkv, fms, fqkv, q, mask, qkv, sinkf, M, S, qptr);
                         return;
 
                     }
@@ -1592,31 +1633,30 @@ struct FlashAttn {
                         HelperQ8KVR8<Dk> khr4(nk1, kh);
 #endif
                         compute_helper_q<Dk, Dv, q_step, k_step, HelperQ8KVR8<Dk>, VHelper, FlashQKfp32<Dk, q_step, k_step>>(
-                                khr4, vh, nq1, nk1, stride_q, stride_m, stride_qkv, fms, fqkv, q, mask, qkv, sinkf, sink_stride, M, S, qptr);
+                                khr4, vh, nq1, nk1, stride_q, stride_m, stride_qkv, fms, fqkv, q, mask, qkv, sinkf, M, S, qptr);
                         return;
                     }
 #endif
                 }
                 compute_helper_q<Dk, Dv, q_step, k_step, KHelper, VHelper, FlashQKfp32<Dk, q_step, k_step>>(
-                        kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, fms, fqkv, q, mask, qkv, sinkf, sink_stride, M, S, qptr);
+                        kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, fms, fqkv, q, mask, qkv, sinkf, M, S, qptr);
 
             }
             else {
                 typename KHelper::block_q8 q8[q_step*(Dk/KHelper::block_size_q)];
                 compute_helper_q<Dk, Dv, q_step, k_step, KHelper, VHelper, FlashQKfp32<Dk, q_step, k_step>>(
-                        kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, fms, fqkv, q, mask, qkv, sinkf, sink_stride, M, S, (char *)q8);
+                        kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, fms, fqkv, q, mask, qkv, sinkf, M, S, (char *)q8);
             }
         }
         else {
             compute_helper<Dk, Dv, q_step, k_step, KHelper, VHelper, FlashQKfp32<Dk, q_step, k_step>>(
-                    kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, fms, fqkv, q, mask, qkv, sinkf, sink_stride, M, S);
+                    kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, fms, fqkv, q, mask, qkv, sinkf, M, S);
         }
     }
 
     FlashMS<q_step, k_step>      fms;
     FlashQKV<Dv, q_step, k_step> fqkv;
     const float *                sinkf;
-    int                          sink_stride;
 
 };
 
@@ -1974,7 +2014,7 @@ struct FlashAttnBF16 {
     static_assert(k_step%32 == 0);
     static_assert(q_step <= 4 || q_step%4 == 0);
 
-    FlashAttnBF16(float scale, float softcap, const float * sinkf, int sink_stride) : fms(scale, softcap), sinkf(sinkf), sink_stride(sink_stride) {}
+    FlashAttnBF16(float scale, float softcap, const float * sinkf) : fms(scale, softcap), sinkf(sinkf) {}
 
     template <typename KHelper, typename VHelper>
     void compute(KHelper& kh, VHelper& vh, int nq1, int nk1, int stride_q, int stride_m, int stride_qkv,
@@ -2015,7 +2055,7 @@ struct FlashAttnBF16 {
 #if FA_TIMING
             t1 = Perf::cur_time();
 #endif
-            fqkv.normalize_and_store(fms, stride_qkv, qkv, sinkf, sink_stride, M, S);
+            fqkv.normalize_and_store(fms, stride_qkv, qkv, sinkf, M, S);
 #if FA_TIMING
             perf.accum_nolock(4, t1);
 #endif
@@ -2024,7 +2064,6 @@ struct FlashAttnBF16 {
             mask += q_step*stride_m;
             qkv  += q_step*stride_qkv;
             if (M && S) { M += q_step; S += q_step; }
-            if (sinkf) sinkf += q_step*sink_stride;
         }
         int n_left = nq1 - q_step*(nq1/q_step);
         if (n_left > 0) {
@@ -2040,7 +2079,7 @@ struct FlashAttnBF16 {
                 vh.next_block(k_step);
                 mr += k_step*sizeof(ggml_half);
             }
-            fqkv.normalize_and_store(fms, n_left, stride_qkv, qkv, sinkf, sink_stride, M, S);
+            fqkv.normalize_and_store(fms, n_left, stride_qkv, qkv, sinkf, M, S);
         }
 #if FA_TIMING
         Perf::instance().add(perf);
@@ -2050,76 +2089,74 @@ struct FlashAttnBF16 {
     FlashMS<q_step, k_step>      fms;
     FlashQKV<Dv, q_step, k_step> fqkv;
     const float *                sinkf;
-    int                          sink_stride;
 };
 #endif
 
 template <int Dk, int Dv, int k_step, typename KHelper, typename VHelper>
 inline void iqk_flash_helper(KHelper& kh, VHelper& vh, int nq1, int nk1, int stride_q, int stride_m, int stride_qkv,
                         const float * q, const char * mask, float scale, float softcap, float * qkv,
-                        const float * sinkf, int sink_stride, float * M, float * S) {
+                        const float * sinkf, float * M, float * S) {
 
-    auto update = [&nq1, &mask, &q, &qkv, &M, &S, stride_q, stride_m, stride_qkv, &sinkf, sink_stride] (int n) {
+    auto update = [&nq1, &mask, &q, &qkv, &M, &S, stride_q, stride_m, stride_qkv] (int n) {
         nq1 -= n;
         if (nq1 == 0) return true;
         q    += n*stride_q;
         mask += n*stride_m;
         qkv  += n*stride_qkv;
         if (M && S) { M += n; S += n; }
-        if (sinkf) sinkf += n*sink_stride;
         return false;
     };
     if (nk1 >= 512) {
         if (nq1 >= 128) {
             int n_step = nq1/128;
-            FlashAttn<Dk, Dv, 64, k_step> fa(scale, softcap, sinkf, sink_stride);
+            FlashAttn<Dk, Dv, 64, k_step> fa(scale, softcap, sinkf);
             fa.compute(kh, vh, 128*n_step, nk1, stride_q, stride_m, stride_qkv, q, (const char *)mask, qkv, M, S);
             if (update(128*n_step)) return;
         }
         if (nq1 >= 64) {
             int n_step = nq1/64;
-            FlashAttn<Dk, Dv, 64, k_step> fa(scale, softcap, sinkf, sink_stride);
+            FlashAttn<Dk, Dv, 64, k_step> fa(scale, softcap, sinkf);
             fa.compute(kh, vh, 64*n_step, nk1, stride_q, stride_m, stride_qkv, q, (const char *)mask, qkv, M, S);
             if (update(64*n_step)) return;
         }
         if (nq1 >= 32) {
             int n_step = nq1/32;
-            FlashAttn<Dk, Dv, 32, k_step> fa(scale, softcap, sinkf, sink_stride);
+            FlashAttn<Dk, Dv, 32, k_step> fa(scale, softcap, sinkf);
             fa.compute(kh, vh, 32*n_step, nk1, stride_q, stride_m, stride_qkv, q, (const char *)mask, qkv, M, S);
             if (update(32*n_step)) return;
         }
         if (nq1 >= 16) {
             int n_step = nq1/16;
-            FlashAttn<Dk, Dv, 16, k_step> fa(scale, softcap, sinkf, sink_stride);
+            FlashAttn<Dk, Dv, 16, k_step> fa(scale, softcap, sinkf);
             fa.compute(kh, vh, 16*n_step, nk1, stride_q, stride_m, stride_qkv, q, (const char *)mask, qkv, M, S);
             if (update(16*n_step)) return;
         }
     }
     if (nq1 == 12) {
         // Special case: TG for GLM-4.5/4.6
-        FlashAttn<Dk, Dv, 12, k_step> fa(scale, softcap, sinkf, sink_stride);
+        FlashAttn<Dk, Dv, 12, k_step> fa(scale, softcap, sinkf);
         fa.compute(kh, vh, 12, nk1, stride_q, stride_m, stride_qkv, q, (const char *)mask, qkv, M, S);
         return;
     }
     if (nq1 >= 8) {
         int n_step = nq1/8;
-        FlashAttn<Dk, Dv, 8, k_step> fa(scale, softcap, sinkf, sink_stride);
+        FlashAttn<Dk, Dv, 8, k_step> fa(scale, softcap, sinkf);
         fa.compute(kh, vh, 8*n_step, nk1, stride_q, stride_m, stride_qkv, q, (const char *)mask, qkv, M, S);
         if (update(8*n_step)) return;
     }
     else if (nq1 >= 4) {
         int n_step = nq1/4;
-        FlashAttn<Dk, Dv, 4, k_step> fa(scale, softcap, sinkf, sink_stride);
+        FlashAttn<Dk, Dv, 4, k_step> fa(scale, softcap, sinkf);
         fa.compute(kh, vh, 4*n_step, nk1, stride_q, stride_m, stride_qkv, q, (const char *)mask, qkv, M, S);
         if (update(4*n_step)) return;
     }
     else if (nq1 >= 2) {
         int n_step = nq1/2;
-        FlashAttn<Dk, Dv, 2, k_step> fa(scale, softcap, sinkf, sink_stride);
+        FlashAttn<Dk, Dv, 2, k_step> fa(scale, softcap, sinkf);
         fa.compute(kh, vh, 2*n_step, nk1, stride_q, stride_m, stride_qkv, q, (const char *)mask, qkv, M, S);
         if (update(2*n_step)) return;
     }
-    FlashAttn<Dk, Dv, 1, k_step> fa(scale, softcap, sinkf, sink_stride);
+    FlashAttn<Dk, Dv, 1, k_step> fa(scale, softcap, sinkf);
     fa.compute(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, (const char *)mask, qkv, M, S);
 }
 
@@ -2127,26 +2164,26 @@ inline void iqk_flash_helper(KHelper& kh, VHelper& vh, int nq1, int nk1, int str
 template <int Dk, int Dv, int k_step>
 inline void iqk_flash_helper_T(int nq1, int nk1, int stride_q, int stride_k, int stride_v, int stride_m, int stride_qkv,
                         const float * q, const char * k, const char * v, const char * mask,
-                        float scale, float softcap, float * qkv, const float * sinkf, int sink_stride, float * M, float * S) {
+                        float scale, float softcap, float * qkv, const float * sinkf, float * M, float * S) {
     HelperBF16<Dk, k_step> kh(k, stride_k);
     HelperBF16<Dv, k_step> vh(v, stride_v);
     if (nk1 >= 4096) {
         if (nq1 >= 64) {
-            FlashAttnBF16<Dk, Dv, 64, k_step> fa(scale, softcap, sinkf, sink_stride);
+            FlashAttnBF16<Dk, Dv, 64, k_step> fa(scale, softcap, sinkf);
             fa.compute(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, (const char *)mask, qkv, M, S);
             return;
         }
         else if (nq1 >= 16) {
-            FlashAttnBF16<Dk, Dv, 16, k_step> fa(scale, softcap, sinkf, sink_stride);
+            FlashAttnBF16<Dk, Dv, 16, k_step> fa(scale, softcap, sinkf);
             fa.compute(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, (const char *)mask, qkv, M, S);
             return;
         }
     }
     if (nq1 >= 8) {
-        FlashAttnBF16<Dk, Dv, 8, k_step> fa(scale, softcap, sinkf, sink_stride);
+        FlashAttnBF16<Dk, Dv, 8, k_step> fa(scale, softcap, sinkf);
         fa.compute(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, (const char *)mask, qkv, M, S);
     } else {
-        FlashAttnBF16<Dk, Dv, 1, k_step> fa(scale, softcap, sinkf, sink_stride);
+        FlashAttnBF16<Dk, Dv, 1, k_step> fa(scale, softcap, sinkf);
         fa.compute(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, (const char *)mask, qkv, M, S);
     }
 }
@@ -2156,43 +2193,43 @@ template <int Dk, int Dv, int k_step, typename KHelper>
 inline bool iqk_flash_helper_T(KHelper& kh, ggml_type type_v,
                         int nq1, int nk1, int stride_q, int stride_v, int stride_m, int stride_qkv,
                         const float * q, const char * v, const char * mask,
-                        float scale, float softcap, float * qkv, const float * sinkf, int sink_stride, float * M, float * S) {
+                        float scale, float softcap, float * qkv, const float * sinkf, float * M, float * S) {
 
     switch (type_v) {
         case GGML_TYPE_F16: {
             HelperF16 vh(v, stride_v);
-            iqk_flash_helper<Dk, Dv, k_step>(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
+            iqk_flash_helper<Dk, Dv, k_step>(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, mask, scale, softcap, qkv, sinkf, M, S);
         } break;
 #ifdef __AVX512BF16__
         case GGML_TYPE_BF16: {
             HelperBF16<Dv, k_step> vh(v, stride_v);
-            iqk_flash_helper<Dk, Dv, k_step>(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
+            iqk_flash_helper<Dk, Dv, k_step>(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, mask, scale, softcap, qkv, sinkf, M, S);
         } break;
 #endif
         case GGML_TYPE_Q8_0: {
             HelperQ80 vh(v, stride_v);
-            iqk_flash_helper<Dk, Dv, k_step>(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
+            iqk_flash_helper<Dk, Dv, k_step>(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, mask, scale, softcap, qkv, sinkf, M, S);
         } break;
         case GGML_TYPE_Q8_KV: {
             HelperQ8KV<Dv> vh(v, stride_v);
-            iqk_flash_helper<Dk, Dv, k_step>(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
+            iqk_flash_helper<Dk, Dv, k_step>(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, mask, scale, softcap, qkv, sinkf, M, S);
         } break;
         case GGML_TYPE_Q6_0: {
             HelperQ60 vh(v, stride_v);
-            iqk_flash_helper<Dk, Dv, k_step>(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
+            iqk_flash_helper<Dk, Dv, k_step>(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, mask, scale, softcap, qkv, sinkf, M, S);
         } break;
 #if GGML_IQK_FA_ALL_QUANTS
         case GGML_TYPE_Q4_0: {
             HelperQ40 vh(v, stride_v);
-            iqk_flash_helper<Dk, Dv, k_step>(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
+            iqk_flash_helper<Dk, Dv, k_step>(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, mask, scale, softcap, qkv, sinkf, M, S);
         } break;
         case GGML_TYPE_Q4_1: {
             HelperQ41 vh(v, stride_v);
-            iqk_flash_helper<Dk, Dv, k_step>(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
+            iqk_flash_helper<Dk, Dv, k_step>(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, mask, scale, softcap, qkv, sinkf, M, S);
         } break;
         case GGML_TYPE_IQ4_NL: {
             HelperIQ4nl vh(v, stride_v);
-            iqk_flash_helper<Dk, Dv, k_step>(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
+            iqk_flash_helper<Dk, Dv, k_step>(kh, vh, nq1, nk1, stride_q, stride_m, stride_qkv, q, mask, scale, softcap, qkv, sinkf, M, S);
         } break;
 #endif
         default: return false;
@@ -2204,42 +2241,42 @@ template <int Dk, int Dv, int k_step>
 inline bool iqk_flash_helper_T(ggml_type type_k, ggml_type type_v,
                         int nq1, int nk1, int stride_q, int stride_k, int stride_v, int stride_m, int stride_qkv,
                         const float * q, const char * k, const char * v, const char * mask,
-                        float scale, float softcap, float * qkv, const float * sinkf, int sink_stride, float * M, float * S) {
+                        float scale, float softcap, float * qkv, const float * sinkf, float * M, float * S) {
 
     bool result = false;
     switch (type_k) {
         case GGML_TYPE_F16: {
             HelperF16 kh(k, stride_k);
-            result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
+            result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, M, S);
         } break;
         case GGML_TYPE_Q8_0: {
             HelperQ80 kh(k, stride_k);
-            result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
+            result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, M, S);
         } break;
         case GGML_TYPE_Q8_0_R8: {
             HelperQ80R8<Dk> kh(k, stride_k);
-            result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
+            result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, M, S);
         } break;
         case GGML_TYPE_Q6_0: {
             HelperQ60 kh(k, stride_k);
-            result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
+            result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, M, S);
         } break;
 #if GGML_IQK_FA_ALL_QUANTS
         case GGML_TYPE_Q8_KV: {
             HelperQ8KV<Dk> kh(k, stride_k);
-            result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
+            result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, M, S);
         } break;
         case GGML_TYPE_Q4_0: {
             HelperQ40 kh(k, stride_k);
-            result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
+            result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, M, S);
         } break;
         case GGML_TYPE_Q4_1: {
             HelperQ41 kh(k, stride_k);
-            result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
+            result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, M, S);
         } break;
         case GGML_TYPE_IQ4_NL: {
             HelperIQ4nl kh(k, stride_k);
-            result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
+            result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, M, S);
         } break;
 #endif
         default: break;
@@ -2254,7 +2291,7 @@ inline bool iqk_flash_helper_T(ggml_type type_k, ggml_type type_v,
                          int stride_q, int stride_k, int stride_v, int stride_m, int stride_qkv,\
                          const float * q, const void * k, const void * v, const void * mask,\
                          float scale, float softcap,\
-                         float       * qkv, const float * sinkf, int sink_stride, float * M, float * S)
+                         float       * qkv, const float * sinkf, float * M, float * S)
 
 IQK_FA_CASE(iqk_fa_576_512);
 IQK_FA_CASE(iqk_fa_512_512);

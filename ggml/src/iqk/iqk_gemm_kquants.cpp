@@ -9,8 +9,7 @@
 #include "ggml-common.h"
 #include "ggml-quants.h"
 
-#ifdef __x86_64__
-
+#ifdef __AVX2__
 namespace {
 
 struct PackerQ80 {
@@ -421,7 +420,7 @@ static void mul_mat_qX_K_q8_K_AVX512(int n, const void * vx, size_t bx, const Da
     }
 }
 
-#else
+#elif __AVX2__
 //====================================== AVX2 ==================================================
 
 struct HighBit5 {

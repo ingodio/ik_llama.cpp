@@ -11,13 +11,13 @@
 
 #include "iqk_config.h"
 
-#include <cstdint>
-
 #if defined IQK_IMPLEMENT
 
 #include <cstring>
 #include <type_traits>
 #include <vector>
+#include <cstdint>
+
 
 #include "ggml-impl.h"
 #include "ggml-quants.h"
@@ -26,9 +26,6 @@
 
 #define GGML_COMMON_IMPL_C
 #include "ggml-common.h"
-
-static inline void set_scale(ggml_half * d, int k, float v) { d[k] = GGML_FP32_TO_FP16(v); }
-static inline void set_scale(float     * d, int k, float v) { d[k] = v; }
 
 #define FA_TIMING 0
 
@@ -82,8 +79,10 @@ struct Perf {
 };
 #endif
 
-#ifdef __AVX2__
+#ifdef __AVX__
 #define MM256_SET_M128I(a, b) _mm256_insertf128_si256(_mm256_castsi128_si256(b), (a), 1)
+
+#ifdef __AVX2__
 #define MM256_SET1_M128I(x)   _mm256_broadcastsi128_si256(x)
 #endif
 
@@ -222,18 +221,20 @@ const uint64_t keven_signs[128] = {
     0xffffffffffff0101, 0x01ffffffffff01ff, 0x01ffffffffffff01, 0xffffffffffffffff,
 };
 
-#ifdef __AVX2__
-
-#define MM256_SET_M128I(a, b) _mm256_insertf128_si256(_mm256_castsi128_si256(b), (a), 1)
-
+#ifdef __AVX__
 static inline float hsum_float_4(__m128 x) {
     x = _mm_add_ps(x, _mm_movehl_ps(x, x));
     x = _mm_add_ss(x, _mm_movehdup_ps(x));
     return _mm_cvtss_f32(x);
 }
-static inline float hsum_float_8(__m256 x) {
-    return hsum_float_4(_mm_add_ps(_mm256_castps256_ps128(x), _mm256_extractf128_ps(x, 1)));
+static inline float hmax_float_8(__m256 x) {
+    __m128 max4 = _mm_max_ps(_mm256_extractf128_ps(x, 1), _mm256_castps256_ps128(x));
+    max4 = _mm_max_ps( max4, _mm_movehl_ps(max4, max4));
+    max4 = _mm_max_ss( max4, _mm_movehdup_ps( max4));
+    return  _mm_cvtss_f32(max4);
 }
+#endif
+#ifdef __AVX2__
 static inline int hsum_i32_8(const __m256i a) {
     const __m128i sum128 = _mm_add_epi32(_mm256_castsi256_si128(a), _mm256_extractf128_si256(a, 1));
     const __m128i hi64 = _mm_unpackhi_epi64(sum128, sum128);
@@ -241,16 +242,12 @@ static inline int hsum_i32_8(const __m256i a) {
     const __m128i hi32 = _mm_shuffle_epi32(sum64, _MM_SHUFFLE(2, 3, 0, 1));
     return _mm_cvtsi128_si32(_mm_add_epi32(sum64, hi32));
 }
-static inline float hmax_float_4(__m128 x) {
-    x = _mm_max_ps( x, _mm_movehl_ps(x, x));
-    x = _mm_max_ss( x, _mm_movehdup_ps( x));
-    return  _mm_cvtss_f32(x);
+static inline float hmax_f32_8(__m256 x) {
+    __m128 max4 = _mm_max_ps(_mm256_extractf128_ps(x, 1), _mm256_castps256_ps128(x));
+    max4 = _mm_max_ps(max4, _mm_movehl_ps(max4, max4));
+    max4 = _mm_max_ss(max4, _mm_movehdup_ps(max4));
+    return  _mm_cvtss_f32(max4);
 }
-static inline float hmax_float_8(__m256 x) {
-    return hmax_float_4(_mm_max_ps(_mm256_extractf128_ps(x, 1), _mm256_castps256_ps128(x)));
-}
-static inline float hmax_f32_4(__m128 x) { return hmax_float_4(x); }
-static inline float hmax_f32_8(__m256 x) { return hmax_float_8(x); }
 static inline float hmin_float_8(__m256 x) {
     __m128 min4 = _mm_min_ps(_mm256_extractf128_ps(x, 1), _mm256_castps256_ps128(x));
     min4 = _mm_min_ps( min4, _mm_movehl_ps(min4, min4));
@@ -345,6 +342,8 @@ template <int nrc> struct Q8_16 {
     const int8_t * y[nrc_y];
 };
 
+#endif //AVX2
+#ifdef __AVX__
 struct Scales8KBase {
     template <typename Q8>
     inline void accum_mins(const __m128i& mins128, const Q8& q8, int i, float c, __m256 * accd) const {
@@ -352,7 +351,15 @@ struct Scales8KBase {
         for (int iy = 0; iy < Q8::nrc_y; ++iy) {
             const __m256i q8s = q8.load_bsums(iy, i);
             const __m256i prod = _mm256_madd_epi16(mins, q8s);
-            accd[iy] = _mm256_fmadd_ps(_mm256_set1_ps(c*q8.scale(iy, i)), _mm256_cvtepi32_ps(prod), accd[iy]);
+
+            const __m256 scale = _mm256_set1_ps(c * q8.scale(iy, i));
+            const __m256 vals = _mm256_cvtepi32_ps(prod);
+            accd[iy] = _mm256_add_ps(_mm256_mul_ps(scale, vals), accd[iy]);
+#ifdef __FMA__
+            accd[iy] = _mm256_fmadd_ps(scale, vals, accd[iy]);
+#else
+            accd[iy] = _mm256_add_ps(_mm256_mul_ps(scale, vals), accd[iy]);
+#endif
         }
     }
     inline __m256i shuffle(__m128i mins) const {
@@ -387,7 +394,7 @@ struct BaseDequantizer {
 
     float d;
 };
-
+#endif
 template <typename Q8, typename Bits>
 static inline void multiply_add(const Bits& bits, const __m256i * scales, int j, int i, const Q8& q8, __m256i * sumi) {
     if (j == 0) {
@@ -491,65 +498,6 @@ struct Q4Bits {
     const BlockPermuter perm;
 };
 
-inline __m512i dpbusd_permd() {
-    return _mm512_setr_epi32(0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15);
-}
-inline __m512 dpbusd_scales(float d, __m256i scales16) {
-    auto vd = _mm512_mul_ps(_mm512_set1_ps(d), _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(scales16)));
-    return _mm512_permutex2var_ps(vd, dpbusd_permd(), vd);
-}
-inline __m512i dpbusd_permute_epi16(__m256i v) {
-    return _mm512_maskz_permutexvar_epi16(0x55555555, dpbusd_permd(), _mm512_castsi256_si512(v));
-}
-
-template <typename Dequantizer, int nrc_y>
-static void mul_mat_iqX_k_q8_K_AVX512_dpbusd(int n, const void * vx, size_t bx, const DataInfo& info, int nrc_x) {
-    assert(n % QK_K == 0);
-    const int nb = n / QK_K;
-
-    Q8<nrc_y> q8(info);
-
-    Dequantizer deq(vx, bx);
-
-    __m512  accd[nrc_y] = {};
-
-    for (int ix = 0; ix < nrc_x; ++ix) {
-
-        deq.new_row(ix);
-
-        for (int i = 0; i < nb; ++i) {
-
-            __m512i mins;
-            auto d4 = deq.new_block(i, mins);
-
-            __m512i p[4];
-#pragma GCC unroll 8
-            for (int iy = 0; iy < nrc_y; ++iy) {
-                for (int k = 0; k < 4; k += 2) {
-                    auto y1 = q8.load_quants64(iy, i, k+0);
-                    auto y2 = q8.load_quants64(iy, i, k+1);
-                    p[k+0] = _mm512_dpbusd_epi32(_mm512_setzero_si512(), deq.bits.values[k+0], y1);
-                    p[k+1] = _mm512_dpbusd_epi32(_mm512_setzero_si512(), deq.bits.values[k+1], y2);
-                }
-                auto bsums = dpbusd_permute_epi16(q8.load_bsums(iy, i));
-                auto d48 = _mm512_mul_ps(d4, _mm512_set1_ps(q8.scale(iy, i)));
-                auto p01 = _mm512_add_epi32(_mm512_unpacklo_epi32(p[0], p[1]), _mm512_unpackhi_epi32(p[0], p[1]));
-                auto p23 = _mm512_add_epi32(_mm512_unpacklo_epi32(p[2], p[3]), _mm512_unpackhi_epi32(p[2], p[3]));
-                auto sum = _mm512_add_epi32(_mm512_unpacklo_epi64(p01, p23), _mm512_unpackhi_epi64(p01, p23));
-                sum = _mm512_dpwssd_epi32(sum, mins, bsums);
-                accd[iy] = _mm512_fmadd_ps(d48, _mm512_cvtepi32_ps(sum), accd[iy]);
-            }
-
-        }
-
-        for (int iy = 0; iy < nrc_y; ++iy) {
-            info.store(ix, iy, _mm512_reduce_add_ps(accd[iy]));
-            accd[iy] = _mm512_setzero_ps();
-        }
-
-    }
-}
-
 struct Q2Bits {
     inline void prepare(const uint8_t * q2) {
 
@@ -648,8 +596,11 @@ static inline float convert_to_q8_k_r8(int k, float d0, const __m256i * qx, cons
     }
     auto max_q32 = _mm256_cvtepi16_epi32(_mm_max_epi16(_mm256_castsi256_si128(max_i16), _mm256_extracti128_si256(max_i16, 1)));
     auto imax4 = _mm_max_epi32(_mm256_castsi256_si128(max_q32), _mm256_extracti128_si256(max_q32, 1));
+    auto max4  = _mm_cvtepi32_ps(imax4);
+    max4 = _mm_max_ps(max4, _mm_movehl_ps(max4, max4));
+    max4 = _mm_max_ss(max4, _mm_movehdup_ps(max4));
     bool needs_scaling = true;
-    float dnew = hmax_float_4(_mm_cvtepi32_ps(imax4)) * d0;
+    float dnew = _mm_cvtss_f32(max4) * d0;
     if (dnew < 1.f) {
         dnew = 1.f; needs_scaling = false;
     }
@@ -685,110 +636,39 @@ static inline float convert_to_q8_k_r8(int k, float d0, const __m256i * qx, cons
     return dnew;
 }
 
-template <int nr, int scale_block = 16> struct Q8KRowRepacker {
-    uint32_t block[8];
-    template <typename Dst>
-    inline void row(int k, float d, float d0, const __m256i * qx, const int16_t * scales, Dst * y_d, int8_t * y_qs) {
-        set_scale(y_d, k, d*convert_to_q8_k_r8<nr>(k, d0, qx, scales, block, y_qs));
-    }
-    template <typename Dst>
-    inline void flush(Dst *, int8_t *) {}
-};
-
-#ifdef HAVE_FANCY_SIMD
-template <int scale_block> struct Q8KRowRepacker<16, scale_block> {
-    alignas(64) __m512i prod[8*16];
-    alignas(64) __m256i stage[8*16];
-    alignas(64) int32_t rmax[16];
-    alignas(64) float   drow[16];
-    alignas(64) float   inv[16];
-    float d0 = 1.f;
-    IQK_ALWAYS_INLINE inline void row(int k, float d, float d0_row, const __m256i * qx, const int16_t * scales, float *, int8_t *) {
-        d0 = d0_row;
-        drow[k] = d;
-        auto max_i16 = _mm512_setzero_si512();
-        for (int ib32 = 0; ib32 < 8; ++ib32) {
-            auto s = scale_block == 32 ? _mm512_set1_epi16(scales[2*ib32])
-                                       : _mm512_inserti64x4(_mm512_set1_epi16(scales[2*ib32+0]), _mm256_set1_epi16(scales[2*ib32+1]), 1);
-            auto q = _mm512_mullo_epi16(_mm512_cvtepi8_epi16(qx[ib32]), s);
-            _mm512_store_si512(prod + 8*k + ib32, q);
-            max_i16 = _mm512_max_epi16(max_i16, _mm512_abs_epi16(q));
-        }
-        auto max16 = _mm256_max_epi16(_mm512_castsi512_si256(max_i16), _mm512_extracti64x4_epi64(max_i16, 1));
-        auto max8 = _mm_max_epi16(_mm256_castsi256_si128(max16), _mm256_extracti128_si256(max16, 1));
-        rmax[k] = 0xffff - _mm_extract_epi16(_mm_minpos_epu16(_mm_xor_si128(max8, _mm_set1_epi16(-1))), 0);
-    }
-    inline void flush(float * y_d, int8_t * y_qs) {
-        auto dn = _mm512_mul_ps(_mm512_cvtepi32_ps(_mm512_load_si512(rmax)), _mm512_set1_ps(d0));
-        auto small = _mm512_cmp_ps_mask(dn, _mm512_set1_ps(1.f), _CMP_LT_OQ);
-        dn = _mm512_mask_blend_ps(small, dn, _mm512_set1_ps(1.f));
-        _mm512_store_ps(inv, _mm512_div_ps(_mm512_set1_ps(1.f), dn));
-        _mm512_storeu_ps(y_d, _mm512_mul_ps(_mm512_load_ps(drow), dn));
-        for (int k = 0; k < 16; ++k) rescale(prod + 8*k, inv[k], !((small >> k) & 1), stage + k);
-        transpose_xor(stage, y_qs);
-    }
-    static IQK_ALWAYS_INLINE inline void rescale(const __m512i * prod, float inv, bool needs_scaling, __m256i * stage) {
-        if (needs_scaling) {
-            auto scale = _mm512_set1_ps(inv);
-            for (int ib32 = 0; ib32 < 8; ++ib32) {
-                auto p = (const __m256i *)(prod + ib32);
-                auto w0 = _mm512_cvt_roundps_epi32(_mm512_mul_ps(scale, _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(_mm256_load_si256(p + 0)))), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
-                auto w1 = _mm512_cvt_roundps_epi32(_mm512_mul_ps(scale, _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(_mm256_load_si256(p + 1)))), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
-                _mm256_store_si256(stage + 16*ib32, _mm512_cvtsepi16_epi8(_mm512_packs_epi32(w0, w1)));
-            }
-        } else {
-            const auto order = _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7);
-            for (int ib32 = 0; ib32 < 8; ++ib32) {
-                _mm256_store_si256(stage + 16*ib32, _mm256_permutevar8x32_epi32(_mm512_cvtsepi16_epi8(_mm512_load_si512(prod + ib32)), order));
-            }
-        }
-    }
-    static inline void transpose_xor(const __m256i * stage, int8_t * qs) {
-        const auto ia0 = _mm512_setr_epi32(0, 16, 2, 18, 4, 20, 6, 22, 8, 24, 10, 26, 12, 28, 14, 30);
-        const auto ia1 = _mm512_setr_epi32(1, 17, 3, 19, 5, 21, 7, 23, 9, 25, 11, 27, 13, 29, 15, 31);
-        const auto ib0 = _mm512_setr_epi32(0, 1, 16, 17, 4, 5, 20, 21, 8, 9, 24, 25, 12, 13, 28, 29);
-        const auto ib1 = _mm512_setr_epi32(2, 3, 18, 19, 6, 7, 22, 23, 10, 11, 26, 27, 14, 15, 30, 31);
-        const auto ic0 = _mm512_setr_epi32(0, 8, 1, 9, 2, 10, 3, 11, 16, 24, 17, 25, 18, 26, 19, 27);
-        const auto ic1 = _mm512_setr_epi32(4, 12, 5, 13, 6, 14, 7, 15, 20, 28, 21, 29, 22, 30, 23, 31);
-        const auto flip = _mm512_set1_epi8(-128);
-        for (int ib32 = 0; ib32 < 8; ++ib32) {
-            auto in = (const __m512i *)(stage + 16*ib32);
-            __m512i z[8];
-            for (int j = 0; j < 8; ++j) z[j] = _mm512_load_si512(in + j);
-            __m512i a[8];
-            a[0] = _mm512_permutex2var_epi32(z[0], ia0, z[1]);
-            a[1] = _mm512_permutex2var_epi32(z[0], ia1, z[1]);
-            a[2] = _mm512_permutex2var_epi32(z[2], ia0, z[3]);
-            a[3] = _mm512_permutex2var_epi32(z[2], ia1, z[3]);
-            a[4] = _mm512_permutex2var_epi32(z[4], ia0, z[5]);
-            a[5] = _mm512_permutex2var_epi32(z[4], ia1, z[5]);
-            a[6] = _mm512_permutex2var_epi32(z[6], ia0, z[7]);
-            a[7] = _mm512_permutex2var_epi32(z[6], ia1, z[7]);
-            __m512i b[8];
-            b[0] = _mm512_permutex2var_epi32(a[0], ib0, a[2]);
-            b[1] = _mm512_permutex2var_epi32(a[1], ib0, a[3]);
-            b[2] = _mm512_permutex2var_epi32(a[0], ib1, a[2]);
-            b[3] = _mm512_permutex2var_epi32(a[1], ib1, a[3]);
-            b[4] = _mm512_permutex2var_epi32(a[4], ib0, a[6]);
-            b[5] = _mm512_permutex2var_epi32(a[5], ib0, a[7]);
-            b[6] = _mm512_permutex2var_epi32(a[4], ib1, a[6]);
-            b[7] = _mm512_permutex2var_epi32(a[5], ib1, a[7]);
-            auto out = (__m512i *)qs + 8*ib32;
-            _mm512_storeu_si512(out + 0, _mm512_xor_si512(_mm512_permutex2var_epi32(b[0], ic0, b[4]), flip));
-            _mm512_storeu_si512(out + 1, _mm512_xor_si512(_mm512_permutex2var_epi32(b[2], ic0, b[6]), flip));
-            _mm512_storeu_si512(out + 2, _mm512_xor_si512(_mm512_permutex2var_epi32(b[0], ic1, b[4]), flip));
-            _mm512_storeu_si512(out + 3, _mm512_xor_si512(_mm512_permutex2var_epi32(b[2], ic1, b[6]), flip));
-            _mm512_storeu_si512(out + 4, _mm512_xor_si512(_mm512_permutex2var_epi32(b[1], ic0, b[5]), flip));
-            _mm512_storeu_si512(out + 5, _mm512_xor_si512(_mm512_permutex2var_epi32(b[3], ic0, b[7]), flip));
-            _mm512_storeu_si512(out + 6, _mm512_xor_si512(_mm512_permutex2var_epi32(b[1], ic1, b[5]), flip));
-            _mm512_storeu_si512(out + 7, _mm512_xor_si512(_mm512_permutex2var_epi32(b[3], ic1, b[7]), flip));
-        }
-    }
-};
-#endif
-
 #else
 // ------------------------------------ __aarch64__ --------------------------------------------------
+
+#ifdef __AVX__ // wonderful
+#define __aarch64__
+#define SIMDE_ENABLE_NATIVE_ALIASES
+#include "simde/arm/neon.h"
+
+#define ggml_vdotq_s32(a, b, c) vdotq_s32(a, b, c)
+#define vdotq_laneq_s32(acc, a, b, lane) \
+    vdotq_laneq_s32_impl<lane>(acc, a, b)
+template<int Lane>
+static inline int32x4_t vdotq_laneq_s32_impl(
+    int32x4_t acc,
+    int8x16_t a,
+    int8x16_t b)
+{
+    static_assert(Lane >= 0 && Lane < 4, "Invalid lane");
+    const __m128i zero = _mm_setzero_si128();
+    const __m128i bl = _mm_shuffle_epi32(
+        b, _MM_SHUFFLE(Lane, Lane, Lane, Lane));
+    const __m128i asign = _mm_cmpgt_epi8(zero, a);
+    const __m128i bsign = _mm_cmpgt_epi8(zero, bl);
+    const __m128i alo = _mm_unpacklo_epi8(a, asign);
+    const __m128i ahi = _mm_unpackhi_epi8(a, asign);
+    const __m128i blo = _mm_unpacklo_epi8(bl, bsign);
+    const __m128i bhi = _mm_unpackhi_epi8(bl, bsign);
+    const __m128i lo = _mm_madd_epi16(alo, blo);
+    const __m128i hi = _mm_madd_epi16(ahi, bhi);
+    const __m128i dot = _mm_hadd_epi32(lo, hi);
+    return _mm_add_epi32(acc, dot);
+}
+#endif
 
 template <int nrc, typename block_q8 = block_q8_K> struct Q8 {
 
