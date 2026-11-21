@@ -10,7 +10,7 @@
 #define GGML_COMMON_IMPL_C
 #include "ggml-common.h"
 
-#ifdef __x86_64__
+#ifdef __AVX2__
 
 namespace {
 
@@ -3448,7 +3448,7 @@ struct Trellis3 {
 
 inline uint8x8_t kt_tail_scale_nibbles(const uint8_t * scales) {
     uint32_t aux; std::memcpy(&aux, scales, 4);
-    auto s = vreinterpret_u8_u32(vand_u32(uint32x2_t{aux, aux >> 4}, vdup_n_u32(0x0f0f0f0f)));
+    auto s = vreinterpret_u8_u32(vand_u32((uint32x2_t{aux, aux >> 4}), vdup_n_u32(0x0f0f0f0f)));
     return vzip1_u8(s, vext_u8(s, s, 4));
 }
 inline uint8x16x2_t kt_tail_signs(const uint8_t * qh) {
