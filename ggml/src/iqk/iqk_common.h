@@ -373,32 +373,6 @@ struct Scales8KBase {
     const __m128i shuffles[2] = {_mm_set_epi32(0x07060706, 0x05040504, 0x03020302, 0x01000100),
                                  _mm_set_epi32(0x0f0e0f0e, 0x0d0c0d0c, 0x0b0a0b0a, 0x09080908)};
 };
-
-template <typename Block, bool per_row_scale = false, bool is_f16 = false>
-struct BaseDequantizer {
-    BaseDequantizer(const void * vx, size_t bx) : vx(vx), bx(bx) {}
-    inline void new_row(int ix) {
-        if constexpr (per_row_scale) {
-            if constexpr (is_f16) {
-                const ggml_half * dptr = (const ggml_half *)((const char *)vx + bx*ix);
-                d = GGML_FP16_TO_FP32(*dptr);
-                x = (const Block *)(dptr + 1);
-            } else {
-                const float * dptr = (const float *)((const char *)vx + bx*ix);
-                d = *dptr;
-                x = (const Block *)(dptr + 1);
-            }
-        } else {
-            x = (const Block *)((const char *)vx + bx*ix);
-        }
-    }
-
-    const void *  vx;
-    const size_t  bx;
-    const Block * x;
-
-    float d;
-};
 #endif
 #ifdef __AVX2__
 template <typename Q8, typename Bits>
