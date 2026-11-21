@@ -8686,6 +8686,52 @@ struct ggml_tensor * ggml_mul_mat_id(
     return result;
 }
 
+#if !GGML_USE_IQK_MULMAT
+// NOT TESTED
+static struct ggml_tensor * ggml_moe_up_gate_fallback(
+            struct ggml_context * ctx,
+            struct ggml_tensor  * as_up,
+            struct ggml_tensor  * as_gate,
+            struct ggml_tensor  * b,
+            struct ggml_tensor  * ids,
+            struct ggml_tensor  * as_up_b,
+            struct ggml_tensor  * as_gate_b,
+            enum   ggml_unary_op  op) {
+    if (as_gate == NULL) {
+        // Combined weight: as_up has ne[1] = 2*n_ff, gate first / up second
+        // (see the combined-tensor handling in
+        // ggml_compute_forward_mul_mat_id_up_gate, where src0_2_cur = base =
+        // gate and src0_1_cur = base + nb02/2 = up). Split the weight tensor
+        // into two views and do two separate mul_mat_ids. The combined bias
+        // in as_up_b uses the same layout, and as_gate_b must be null.
+        GGML_ASSERT(!as_gate_b);
+        GGML_ASSERT(as_up->ne[1] % 2 == 0);
+        const int64_t n_ff = as_up->ne[1] / 2;
+        struct ggml_tensor * gate_w = ggml_view_3d(ctx, as_up, as_up->ne[0], n_ff, as_up->ne[2], as_up->nb[1], as_up->nb[2], 0);
+        struct ggml_tensor * up_w   = ggml_view_3d(ctx, as_up, as_up->ne[0], n_ff, as_up->ne[2], as_up->nb[1], as_up->nb[2], n_ff * as_up->nb[1]);
+        struct ggml_tensor * result_gate = ggml_mul_mat_id(ctx, gate_w, b, ids);
+        struct ggml_tensor * result_up   = ggml_mul_mat_id(ctx, up_w,   b, ids);
+        if (as_up_b) {
+            GGML_ASSERT(as_up_b->ne[0] == 2*n_ff);
+            struct ggml_tensor * gate_bias = ggml_view_2d(ctx, as_up_b, n_ff, as_up_b->ne[1], as_up_b->nb[1], 0);
+            struct ggml_tensor * up_bias   = ggml_view_2d(ctx, as_up_b, n_ff, as_up_b->ne[1], as_up_b->nb[1], n_ff * as_up_b->nb[0]);
+            result_gate = ggml_add_id(ctx, result_gate, gate_bias, ids);
+            result_up   = ggml_add_id(ctx, result_up,   up_bias,   ids);
+        }
+        return ggml_fused_mul_unary(ctx, result_gate, result_up, op);
+    }
+    struct ggml_tensor * result_up   = ggml_mul_mat_id(ctx, as_up,   b, ids);
+    if (as_up_b) {
+        result_up = ggml_add_id(ctx, result_up, as_up_b, ids);
+    }
+    struct ggml_tensor * result_gate = ggml_mul_mat_id(ctx, as_gate, b, ids);
+    if (as_gate_b) {
+        result_gate = ggml_add_id(ctx, result_gate, as_gate_b, ids);
+    }
+    return ggml_fused_mul_unary(ctx, result_gate, result_up, op);
+}
+#endif
+
 struct ggml_tensor * ggml_moe_up_gate(
             struct ggml_context * ctx,
             struct ggml_tensor  * as_up,
@@ -8698,6 +8744,9 @@ struct ggml_tensor * ggml_moe_up_gate(
         struct ggml_tensor * result_gate = ggml_mul_mat_id(ctx, as_gate, b, ids);
         return ggml_fused_mul_unary(ctx, result_gate, result_up, op);
     }
+#if !GGML_USE_IQK_MULMAT
+    return ggml_moe_up_gate_fallback(ctx, as_up, as_gate, b, ids, NULL, NULL, op);
+#endif
     GGML_ASSERT(!ggml_is_transposed(as_up));
     GGML_ASSERT(!as_gate || !ggml_is_transposed(as_gate));
     GGML_ASSERT(ids->type == GGML_TYPE_I32);
@@ -8757,6 +8806,9 @@ struct ggml_tensor * ggml_moe_up_gate_ext(
         }
         return ggml_fused_mul_unary(ctx, result_gate, result_up, op);
     }
+#if !GGML_USE_IQK_MULMAT
+    return ggml_moe_up_gate_fallback(ctx, as_up, as_gate, b, ids, as_up_b, as_gate_b, op);
+#endif
 
     GGML_ASSERT(!ggml_is_transposed(as_up));
     GGML_ASSERT(!as_gate || !ggml_is_transposed(as_gate));
@@ -8801,6 +8853,14 @@ struct ggml_tensor * ggml_fused_up_gate(
         struct ggml_tensor * result_gate = ggml_mul_mat(ctx, gate, b);
         return ggml_fused_mul_unary(ctx, result_gate, result_up, op);
     }
+#if !GGML_USE_IQK_MULMAT
+    // FUSED_UP_GATE has no compute path without IQK; always use the unfused fallback.
+    {
+        struct ggml_tensor * result_up   = ggml_mul_mat(ctx, up,   b);
+        struct ggml_tensor * result_gate = ggml_mul_mat(ctx, gate, b);
+        return ggml_fused_mul_unary(ctx, result_gate, result_up, op);
+    }
+#endif
     GGML_ASSERT(!ggml_is_transposed(up));
     GGML_ASSERT(!ggml_is_transposed(gate));
 
@@ -18995,6 +19055,10 @@ static int ggml_compute_forward_mul_mat(
     const struct ggml_tensor * src0 = dst->src[0];
     const struct ggml_tensor * src1 = dst->src[1];
 
+#if !GGML_USE_IQK_MULMAT
+    GGML_UNUSED(cgraph); // only used for the IQK mul_mat fusion
+#endif
+
     GGML_TENSOR_BINARY_OP_LOCALS
 
     const int ith = params->ith;
@@ -19099,9 +19163,11 @@ static int ggml_compute_forward_mul_mat(
 
     }
 
-    const void * wdata    = (src1->type == vec_dot_type) ? src1->data : params->wdata;
 
     if (src1->type != vec_dot_type && dst->type == GGML_TYPE_F32) {
+#if GGML_USE_IQK_MULMAT
+        const void * wdata    = (src1->type == vec_dot_type) ? src1->data : params->wdata;
+
         const size_t row_size = ggml_row_size(vec_dot_type, ne10);
         if (iqk_mul_mat_4d(ne01, ne11, ne00,
                     ne02, ne03, ne12, ne13, nb02, nb03, row_size*ne11, row_size*ne11*ne12,
@@ -19127,6 +19193,7 @@ static int ggml_compute_forward_mul_mat(
                     vec_dot_type, wdata, row_size,
                     (float *)dst_next->data, dst_next->nb[1]/sizeof(float), ith, nth)) break;
                 ++node_n;
+#endif
             }
             return node_n;
         }
@@ -25507,12 +25574,15 @@ static void ggml_compute_forward_delta_net_f32(
         GGML_ASSERT(src6->ne[0] >= (n_tokens - 1)*state_step_stride);
     }
 
+
+#if GGML_USE_IQK_MULMAT
     if (iqk_fused_delta_net(head_dim, n_heads, gqa_ratio, repeat_type, n_tokens, n_seqs,
                 src2->nb[1]/sizeof(float), src2->nb[2]/sizeof(float), src2->nb[3]/sizeof(float),
                 q_data, k_data, v_data, g_data, beta_data, state_in,
                 out_data, state_working, saved_steps, (int) state_step_stride, ith, nth)) {
         return;
     }
+#endif
 
     const int64_t total_heads = n_heads * n_seqs;
     const int64_t heads_per_thread = (total_heads + nth - 1) / nth;
@@ -28111,11 +28181,19 @@ static int ggml_compute_forward(struct ggml_compute_params * params, struct ggml
             } break;
         case GGML_OP_MOE_FUSED_UP_GATE:
             {
+#if GGML_USE_IQK_MULMAT
                 ggml_compute_forward_mul_mat_id_up_gate(params, tensor);
+#else
+                GGML_ABORT("MOE_FUSED_UP_GATE requires a build with GGML_IQK_MUL_MAT");
+#endif
             } break;
         case GGML_OP_FUSED_UP_GATE:
             {
+#if GGML_USE_IQK_MULMAT
                 ggml_compute_forward_mul_mat_up_gate(params, tensor);
+#else
+                GGML_ABORT("MOE_FUSED_UP_GATE requires a build with GGML_IQK_MUL_MAT");
+#endif
             } break;
         case GGML_OP_OUT_PROD:
             {
@@ -28206,6 +28284,7 @@ static int ggml_compute_forward(struct ggml_compute_params * params, struct ggml
             } break;
         case GGML_OP_SOFT_MAX:
             {
+#if GGML_USE_IQK_MULMAT
                 if (fusion && i + 4 < cgraph->n_nodes &&
                     cgraph->nodes[i+1]->op == GGML_OP_RESHAPE  &&
                     cgraph->nodes[i+2]->op == GGML_OP_ARGSORT  &&
@@ -28219,7 +28298,9 @@ static int ggml_compute_forward(struct ggml_compute_params * params, struct ggml
                             params->ith, params->nth);
                     i += 4;
                 } else {
+#else
                     ggml_compute_forward_soft_max(params, tensor);
+#endif
                 }
             } break;
         case GGML_OP_SOFT_MAX_BACK:
@@ -28389,9 +28470,13 @@ static int ggml_compute_forward(struct ggml_compute_params * params, struct ggml
             } break;
         case GGML_OP_INDEXER_TOPK:
             {
+#if GGML_USE_IQK_MULMAT
                 if (!iqk_indexer_topk(tensor, params->wdata, (barrier_t)ggml_barrier, (void *)params->shared, params->ith, params->nth)) {
                     GGML_ABORT("Fatal error");
                 }
+#else
+                GGML_ABORT("INDEXER_TOPK requires a build with GGML_IQK_MUL_MAT");
+#endif
             } break;
         case GGML_OP_MASK_TOPK:
             {
@@ -30601,7 +30686,9 @@ struct ggml_cplan ggml_graph_plan(const struct ggml_cgraph * cgraph, int n_threa
                 } break;
             case GGML_OP_INDEXER_TOPK:
                 {
+#if GGML_USE_IQK_MULMAT
                     cur = iqk_idx_topk_work_buffer_size(node, n_tasks);
+#endif
                 } break;
             case GGML_OP_MASK_TO_IDX:
                 {

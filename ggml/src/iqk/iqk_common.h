@@ -82,8 +82,10 @@ struct Perf {
 };
 #endif
 
-#ifdef __AVX2__
+#ifdef __AVX__
 #define MM256_SET_M128I(a, b) _mm256_insertf128_si256(_mm256_castsi128_si256(b), (a), 1)
+#endif
+#ifdef __AVX2__
 #define MM256_SET1_M128I(x)   _mm256_broadcastsi128_si256(x)
 #endif
 
@@ -222,7 +224,7 @@ const uint64_t keven_signs[128] = {
     0xffffffffffff0101, 0x01ffffffffff01ff, 0x01ffffffffffff01, 0xffffffffffffffff,
 };
 
-#ifdef __AVX2__
+#ifdef __AVX__
 
 #define MM256_SET_M128I(a, b) _mm256_insertf128_si256(_mm256_castsi128_si256(b), (a), 1)
 
@@ -234,6 +236,8 @@ static inline float hsum_float_4(__m128 x) {
 static inline float hsum_float_8(__m256 x) {
     return hsum_float_4(_mm_add_ps(_mm256_castps256_ps128(x), _mm256_extractf128_ps(x, 1)));
 }
+#endif
+#ifdef __AVX2__
 static inline int hsum_i32_8(const __m256i a) {
     const __m128i sum128 = _mm_add_epi32(_mm256_castsi256_si128(a), _mm256_extractf128_si256(a, 1));
     const __m128i hi64 = _mm_unpackhi_epi64(sum128, sum128);
@@ -344,7 +348,8 @@ template <int nrc> struct Q8_16 {
     float d[5*nrc_y];
     const int8_t * y[nrc_y];
 };
-
+#endif //AVX2
+#ifdef __AVX__
 struct Scales8KBase {
     template <typename Q8>
     inline void accum_mins(const __m128i& mins128, const Q8& q8, int i, float c, __m256 * accd) const {
@@ -352,8 +357,15 @@ struct Scales8KBase {
         for (int iy = 0; iy < Q8::nrc_y; ++iy) {
             const __m256i q8s = q8.load_bsums(iy, i);
             const __m256i prod = _mm256_madd_epi16(mins, q8s);
-            accd[iy] = _mm256_fmadd_ps(_mm256_set1_ps(c*q8.scale(iy, i)), _mm256_cvtepi32_ps(prod), accd[iy]);
-        }
+            const __m256 scale = _mm256_set1_ps(c * q8.scale(iy, i));
+            const __m256 vals = _mm256_cvtepi32_ps(prod);
+            accd[iy] = _mm256_add_ps(_mm256_mul_ps(scale, vals), accd[iy]);
+#ifdef __FMA__
+            accd[iy] = _mm256_fmadd_ps(scale, vals, accd[iy]);
+#else
+            accd[iy] = _mm256_add_ps(_mm256_mul_ps(scale, vals), accd[iy]);
+#endif
+       }
     }
     inline __m256i shuffle(__m128i mins) const {
         return MM256_SET_M128I(_mm_shuffle_epi8(mins, shuffles[1]), _mm_shuffle_epi8(mins, shuffles[0]));
@@ -387,7 +399,7 @@ struct BaseDequantizer {
 
     float d;
 };
-
+#endif
 template <typename Q8, typename Bits>
 static inline void multiply_add(const Bits& bits, const __m256i * scales, int j, int i, const Q8& q8, __m256i * sumi) {
     if (j == 0) {
@@ -789,6 +801,36 @@ template <int scale_block> struct Q8KRowRepacker<16, scale_block> {
 
 #else
 // ------------------------------------ __aarch64__ --------------------------------------------------
+#ifdef __AVX__ // avx with neon
+#define __aarch64__
+#define SIMDE_ENABLE_NATIVE_ALIASES
+#include "simde/arm/neon.h"
+
+#define ggml_vdotq_s32(a, b, c) vdotq_s32(a, b, c)
+#define vdotq_laneq_s32(acc, a, b, lane) \
+    vdotq_laneq_s32_impl<lane>(acc, a, b)
+template<int Lane>
+static inline int32x4_t vdotq_laneq_s32_impl(
+    int32x4_t acc,
+    int8x16_t a,
+    int8x16_t b)
+{
+    static_assert(Lane >= 0 && Lane < 4, "Invalid lane");
+    const __m128i zero = _mm_setzero_si128();
+    const __m128i bl = _mm_shuffle_epi32(
+        b, _MM_SHUFFLE(Lane, Lane, Lane, Lane));
+    const __m128i asign = _mm_cmpgt_epi8(zero, a);
+    const __m128i bsign = _mm_cmpgt_epi8(zero, bl);
+    const __m128i alo = _mm_unpacklo_epi8(a, asign);
+    const __m128i ahi = _mm_unpackhi_epi8(a, asign);
+    const __m128i blo = _mm_unpacklo_epi8(bl, bsign);
+    const __m128i bhi = _mm_unpackhi_epi8(bl, bsign);
+    const __m128i lo = _mm_madd_epi16(alo, blo);
+    const __m128i hi = _mm_madd_epi16(ahi, bhi);
+    const __m128i dot = _mm_hadd_epi32(lo, hi);
+    return _mm_add_epi32(acc, dot);
+}
+#endif
 
 template <int nrc, typename block_q8 = block_q8_K> struct Q8 {
 

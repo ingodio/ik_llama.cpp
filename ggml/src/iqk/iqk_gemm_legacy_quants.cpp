@@ -47,7 +47,7 @@ inline float nvfp4_requant_scale(const uint8_t * sb, float s1, float s2, int a1,
 // ============================== Legacy quants
 //
 
-#ifdef __x86_64__
+#ifdef __AVX2__
 
 namespace {
 

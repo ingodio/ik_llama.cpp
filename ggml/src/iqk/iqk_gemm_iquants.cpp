@@ -7,7 +7,7 @@
 #define GGML_COMMON_IMPL_C
 #include "ggml-common.h"
 
-#ifdef __x86_64__
+#ifdef __AVX2__
 
 namespace {
 
@@ -3512,8 +3512,8 @@ struct DequantizerIQ2XXS final : public BaseDequantizer<block_iq2_xxs> {
     }
 
     static inline void prepare2(uint8x16_t * b, const uint8_t * idx, const uint64_t * signs, uint32_t sidx) {
-        b[0] = vreinterpretq_u8_u64(uint64x2_t{iq2xxs_grid[idx[0]], iq2xxs_grid[idx[1]]});
-        b[1] = vreinterpretq_u8_u64(uint64x2_t{iq2xxs_grid[idx[2]], iq2xxs_grid[idx[3]]});
+        b[0] = vreinterpretq_u8_u64((uint64x2_t{iq2xxs_grid[idx[0]], iq2xxs_grid[idx[1]]}));
+        b[1] = vreinterpretq_u8_u64((uint64x2_t{iq2xxs_grid[idx[2]], iq2xxs_grid[idx[3]]}));
         apply_signs_2(b, signs, sidx);
     }
 
@@ -3637,8 +3637,8 @@ struct DequantizerIQ3XXS final : public BaseDequantizer<block_iq3_xxs> {
     }
 
     inline static void make2(const uint8_t * q3, uint32_t sidx, uint8x16_t * b) {
-        b[0] = vreinterpretq_u8_u32(uint32x4_t{iq3xxs_grid[q3[0]], iq3xxs_grid[q3[1]], iq3xxs_grid[q3[2]], iq3xxs_grid[q3[3]]});
-        b[1] = vreinterpretq_u8_u32(uint32x4_t{iq3xxs_grid[q3[4]], iq3xxs_grid[q3[5]], iq3xxs_grid[q3[6]], iq3xxs_grid[q3[7]]});
+        b[0] = vreinterpretq_u8_u32((uint32x4_t{iq3xxs_grid[q3[0]], iq3xxs_grid[q3[1]], iq3xxs_grid[q3[2]], iq3xxs_grid[q3[3]]}));
+        b[1] = vreinterpretq_u8_u32((uint32x4_t{iq3xxs_grid[q3[4]], iq3xxs_grid[q3[5]], iq3xxs_grid[q3[6]], iq3xxs_grid[q3[7]]}));
         apply_signs_2(b, keven_signs, sidx);
     }
     inline void prepare(int i, int j) {
@@ -3681,8 +3681,8 @@ struct DequantizerIQ3S final : public BaseDequantizer<block_iq3_s> {
             const int8x16_t& hshift, uint8x16_t * b) {
         auto vindex = vorrq_u16(idx_l, vandq_u16(vshlq_u16(vdupq_n_u16(qh), hshift), vdupq_n_u16(256)));
         const uint16_t * idx = (const uint16_t *)&vindex;
-        b[0] = vreinterpretq_u8_u32(uint32x4_t{iq3s_grid[idx[0]], iq3s_grid[idx[1]], iq3s_grid[idx[2]], iq3s_grid[idx[3]]});
-        b[1] = vreinterpretq_u8_u32(uint32x4_t{iq3s_grid[idx[4]], iq3s_grid[idx[5]], iq3s_grid[idx[6]], iq3s_grid[idx[7]]});
+        b[0] = vreinterpretq_u8_u32((uint32x4_t{iq3s_grid[idx[0]], iq3s_grid[idx[1]], iq3s_grid[idx[2]], iq3s_grid[idx[3]]}));
+        b[1] = vreinterpretq_u8_u32((uint32x4_t{iq3s_grid[idx[4]], iq3s_grid[idx[5]], iq3s_grid[idx[6]], iq3s_grid[idx[7]]}));
         sh.apply_signs_1(b+0, signs16);
         sh.apply_signs_1(b+1, signs16);
     }
@@ -3955,7 +3955,7 @@ static void mul_mat_iq3_s_r4_q8_k(int n, const void * vx, size_t bx, const DataI
     int32x4_t   isum[nrc_y] = {};
     int8x16_t   qx[8];
     auto m1 = vdupq_n_u8(1);
-    auto shuff = vreinterpretq_u8_u32(uint32x4_t{0xffffff00, 0xffffff01, 0xffffff02, 0xffffff03});
+    auto shuff = vreinterpretq_u8_u32((uint32x4_t{0xffffff00, 0xffffff01, 0xffffff02, 0xffffff03}));
     uint32_t    stored_scales[8];
     for (int ix = 0; ix < nrc_x; ix += 4) {
         auto iq3 = (const block_iq3_s_r4 *)((const char *)vx + (ix+0)*bx);
@@ -4255,8 +4255,8 @@ void iqk_convert_iq3_xxs_q8_k_r8(int n, const void * vx, size_t bx, void * vy, i
 //            const int8x16_t& hshift, uint8x16_t * b) {
 //        auto vindex = vorrq_u16(idx_l, vandq_u16(vshlq_u16(vdupq_n_u16(qh), hshift), vdupq_n_u16(256)));
 //        const uint16_t * idx = (const uint16_t *)&vindex;
-//        b[0] = vreinterpretq_u8_u32(uint32x4_t{iq3s_grid[idx[0]], iq3s_grid[idx[1]], iq3s_grid[idx[2]], iq3s_grid[idx[3]]});
-//        b[1] = vreinterpretq_u8_u32(uint32x4_t{iq3s_grid[idx[4]], iq3s_grid[idx[5]], iq3s_grid[idx[6]], iq3s_grid[idx[7]]});
+//        b[0] = vreinterpretq_u8_u32((uint32x4_t{iq3s_grid[idx[0]], iq3s_grid[idx[1]], iq3s_grid[idx[2]], iq3s_grid[idx[3]]}));
+//        b[1] = vreinterpretq_u8_u32((uint32x4_t{iq3s_grid[idx[4]], iq3s_grid[idx[5]], iq3s_grid[idx[6]], iq3s_grid[idx[7]]}));
 //        sh.apply_signs_1(b+0, signs16);
 //        sh.apply_signs_1(b+1, signs16);
 //    }

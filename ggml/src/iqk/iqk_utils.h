@@ -279,7 +279,51 @@ static inline __m256 v_clamp_max(__m256 x, __m256 max) {
     auto mask = _mm256_cmp_ps(x, max, _CMP_GT_OQ);
     return _mm256_or_ps(_mm256_and_ps(mask, max), _mm256_andnot_ps(mask, x));
 }
-
-#endif // __AVX2__
-
+#endif
+#if defined(__AVX__) && !defined(__AVX2__)
+static inline __m128 v_expf(__m128 x)
+{
+    const __m128 one = _mm_set1_ps(1.0f);
+    x = _mm_min_ps(x, _mm_set1_ps(88.0f));
+    x = _mm_max_ps(x, _mm_set1_ps(-87.0f));
+    const __m128 log2e = _mm_set1_ps(1.44269504088896341f);
+    __m128 fx = _mm_add_ps(_mm_mul_ps(x, log2e), _mm_set1_ps(12582912.0f));
+    fx = _mm_sub_ps(fx, _mm_set1_ps(12582912.0f));
+    __m128 r = _mm_sub_ps(x, _mm_mul_ps(fx, _mm_set1_ps(0.693359375f)));
+    r = _mm_sub_ps(r, _mm_mul_ps(fx, _mm_set1_ps(-0.00021219444005f)));
+    const __m128 c1 = _mm_set1_ps(1.9875691500e-4f);
+    const __m128 c2 = _mm_set1_ps(1.3981999507e-3f);
+    const __m128 c3 = _mm_set1_ps(8.3334519073e-3f);
+    const __m128 c4 = _mm_set1_ps(4.1665795894e-2f);
+    const __m128 c5 = _mm_set1_ps(1.6666665459e-1f);
+    const __m128 c6 = _mm_set1_ps(5.0000001201e-1f);
+    const __m128 r2 = _mm_mul_ps(r, r);
+    const __m128 r4 = _mm_mul_ps(r2, r2);
+    const __m128 p0 = _mm_add_ps(c1, _mm_mul_ps(c2, r));
+    const __m128 p1 = _mm_add_ps(c3, _mm_mul_ps(c4, r));
+    const __m128 p2 = _mm_add_ps(c5, _mm_mul_ps(c6, r));
+    const __m128 p01 = _mm_add_ps(p0, _mm_mul_ps(p1, r2));
+    const __m128 p = _mm_add_ps(p01, _mm_mul_ps(p2, r4));
+    const __m128 er = _mm_add_ps(one, _mm_add_ps(r, _mm_mul_ps(r2, p)));
+    __m128i ni = _mm_cvttps_epi32(fx);
+    ni = _mm_add_epi32(ni, _mm_set1_epi32(127));
+    ni = _mm_slli_epi32(ni, 23);
+    const __m128 scale = _mm_castsi128_ps(ni);
+    return _mm_mul_ps(er, scale);
+}
+static inline __m128 v_tanh(__m128 x) {
+    const __m128 one = _mm_set1_ps(1.0f);
+    const __m128 two = _mm_set1_ps(2.0f);
+    const __m128 sign = _mm_and_ps(
+        x, _mm_set1_ps(-0.0f));
+    const __m128 ax = _mm_andnot_ps(
+        _mm_set1_ps(-0.0f), x);
+    const __m128 e = v_expf128(
+        _mm_mul_ps(_mm_sub_ps(_mm_setzero_ps(), two), ax));
+    const __m128 num = _mm_sub_ps(one, e);
+    const __m128 den = _mm_add_ps(one, e);
+    const __m128 y = _mm_mul_ps(num, _mm_rcp_ps(den));
+    return _mm_xor_ps(y, sign);
+}
+#endif // AVX
 #endif // IQK_IMPLEMENT

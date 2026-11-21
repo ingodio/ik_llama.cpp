@@ -9,7 +9,7 @@
 #include "ggml-common.h"
 #include "ggml-quants.h"
 
-#ifdef __x86_64__
+#ifdef __AVX2__
 
 namespace {
 

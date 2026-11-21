@@ -708,8 +708,11 @@ void quantize_row_q2_0_ref(const float * restrict x, block_q2_0 * restrict y, in
 }
 
 void quantize_row_q2_0(const float * restrict x, void * restrict y, int64_t k) {
-    quantize_row_q2_0_ref(x, (block_q2_0 *)y, k);
-}
+#if GGML_USE_IQK_MULMAT
+    iqk_quantize_q4_0(x, y, k);
+#else
+    quantize_row_q4_0_ref(x, y, k);
+#endif}
 
 size_t quantize_q2_0(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrows, int64_t n_per_row, const float * imatrix, const struct quantize_user_data * user_data) {
     GGML_UNUSED(imatrix);
