@@ -279,7 +279,6 @@ static inline __m256 v_clamp_max(__m256 x, __m256 max) {
     auto mask = _mm256_cmp_ps(x, max, _CMP_GT_OQ);
     return _mm256_or_ps(_mm256_and_ps(mask, max), _mm256_andnot_ps(mask, x));
 }
-#endif // AVX2
 #endif
 #if defined(__AVX__) && !defined(__AVX2__)
 static inline __m256 v_expf(__m256 x)
@@ -409,4 +408,5 @@ static inline __m256 v_tanh(__m256 x)
                       _mm256_min_ps(y, one));
     return y;
 }
+#endif // AVX
 #endif // IQK_IMPLEMENT

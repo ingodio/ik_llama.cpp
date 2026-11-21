@@ -1430,8 +1430,7 @@ void MulMat::gelu(int n, const float * x, float * y) {
         for (; i + 7 < n; i += 8) _mm256_storeu_ps(y + i, v_gelu(_mm256_loadu_ps(x + i), c1, c2));
 
     }
-#endif
-#if defined(__AVX__) && !defined(__AVX2__)
+#elif defined(__AVX__)
 void MulMat::gelu(int n, const float *x, float *y) {
     constexpr float A = 0.044715f;
     constexpr float B = -1.5957691216057307f;
