@@ -1570,28 +1570,6 @@ void MulMat::gelu(int n, const float * x, float * y) {
 
     }
 #endif
-#if defined(__AVX2__) && defined(__FMA__)
-
-void MulMat::gelu(int n, const float * x, float * y) {
-    constexpr float GELU_COEF_A = 0.044715f;
-    constexpr float SQRT_2_OVER_PI  = 0.79788456080286535587989211986876f;
-    //GGML_ASSERT(n%8 == 0);
-    int i = 0;
-#if defined __AVX512F__ && defined __AVX512DQ__
-    {
-        __m512 c1 = _mm512_set1_ps(GELU_COEF_A);
-        __m512 c2 = _mm512_set1_ps(2.f*SQRT_2_OVER_PI);
-        for (; i + 15 < n; i += 16) _mm512_storeu_ps(y + i, v_gelu(_mm512_loadu_ps(x + i), c1, c2));
-    }
-#endif
-#if defined __AVX2__ && defined __FMA__
-    if (i + 7 < n) {
-        __m256 c1 = _mm256_set1_ps(GELU_COEF_A);
-        __m256 c2 = _mm256_set1_ps(2.f*SQRT_2_OVER_PI);
-        for (; i + 7 < n; i += 8) _mm256_storeu_ps(y + i, v_gelu(_mm256_loadu_ps(x + i), c1, c2));
-
-    }
-#endif
     for (; i < n; ++i) y[i] = 0.5f*x[i]*(1.0f + tanhf(SQRT_2_OVER_PI*x[i]*(1.0f + GELU_COEF_A*x[i]*x[i])));
 }
 
