@@ -76,6 +76,15 @@ inline __m256 v_sigmoid(__m256 x) {
     const __m256 one_plus_exp_neg_x = _mm256_add_ps(one, exp_neg_x);
     return _mm256_div_ps(one, one_plus_exp_neg_x);
 }
+#elif defined __AVX__
+inline __m256 v_sigmoid(__m256 x) {
+    const __m256 one = _mm256_set1_ps(1);
+    const __m256 zero  = _mm256_setzero_ps();
+    const __m256 neg_x = _mm256_sub_ps(zero, x);
+    const __m256 exp_neg_x = v_expf(neg_x);
+    const __m256 one_plus_exp_neg_x = _mm256_add_ps(one, exp_neg_x);
+    return _mm256_rcp_ps(one_plus_exp_neg_x);
+}
 #endif
 #if defined __AVX512F__ && defined __AVX512DQ__
 inline __m512 v_sigmoid(__m512 x) {
@@ -96,7 +105,7 @@ inline void biased_sigmoid(int n, const float * x, const float * bias, float * y
         _mm512_storeu_ps(z + i, v);
     }
 #endif
-#if defined __AVX2__ && defined __FMA__
+#if defined __AVX__
     for (; i + 7 < n; i += 8) {
         auto v = v_sigmoid(_mm256_loadu_ps(x + i));
         _mm256_storeu_ps(y + i, _mm256_add_ps(v, _mm256_loadu_ps(bias + i)));
@@ -123,7 +132,7 @@ inline void biased_sigmoid(int n, const float * x, const float * bias, float * y
         _mm512_storeu_ps(y + i, _mm512_add_ps(v, _mm512_loadu_ps(bias + i)));
     }
 #endif
-#if defined __AVX2__ && defined __FMA__
+#if defined __AVX__
     for (; i + 7 < n; i += 8) {
         auto v = v_sigmoid(_mm256_loadu_ps(x + i));
         _mm256_storeu_ps(y + i, _mm256_add_ps(v, _mm256_loadu_ps(bias + i)));
@@ -725,7 +734,7 @@ bool iqk_ssm_conv4([[maybe_unused]] int nr, [[maybe_unused]] int nc, [[maybe_unu
         }
     }
     return true;
-#elif defined __ARM_NEON || __AVX__
+#elif defined __ARM_NEON
     if (nt <= 32 || nc != 4 || nr%16 != 0) {
         return false;
     }

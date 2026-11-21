@@ -9,6 +9,7 @@
 
 #include "iqk_config.h"
 
+#if defined IQK_IMPLEMENT
 
 #include <cstring>
 #include <cfloat>
@@ -1409,28 +1410,7 @@ void MulMat::relu(int n, const float * x, float * y) {
     for (int j = 0; j < n; ++j) y[j] = x[j] > 0 ? x[j] : 0;
 }
 #endif
-#if defined(__AVX2__) && defined(__FMA__)
-
-void MulMat::gelu(int n, const float * x, float * y) {
-    constexpr float GELU_COEF_A = 0.044715f;
-    constexpr float SQRT_2_OVER_PI  = 0.79788456080286535587989211986876f;
-    //GGML_ASSERT(n%8 == 0);
-    int i = 0;
-#if defined __AVX512F__ && defined __AVX512DQ__
-    {
-        __m512 c1 = _mm512_set1_ps(GELU_COEF_A);
-        __m512 c2 = _mm512_set1_ps(2.f*SQRT_2_OVER_PI);
-        for (; i + 15 < n; i += 16) _mm512_storeu_ps(y + i, v_gelu(_mm512_loadu_ps(x + i), c1, c2));
-    }
-#endif
-#if defined __AVX2__ && defined __FMA__
-    if (i + 7 < n) {
-        __m256 c1 = _mm256_set1_ps(GELU_COEF_A);
-        __m256 c2 = _mm256_set1_ps(2.f*SQRT_2_OVER_PI);
-        for (; i + 7 < n; i += 8) _mm256_storeu_ps(y + i, v_gelu(_mm256_loadu_ps(x + i), c1, c2));
-
-    }
-#elif defined(__AVX__)
+#if defined(__AVX__) && !defined(__AVX2__)
 void MulMat::gelu(int n, const float *x, float *y) {
     constexpr float A = 0.044715f;
     constexpr float B = -1.5957691216057307f;
@@ -1542,6 +1522,28 @@ void MulMat::relu(int n, const float * x, float * y) {
     for (int j = 0; j < n; ++j) y[j] = x[j] > 0 ? x[j] : 0;
 }
 #endif
+#if defined(__AVX2__) && defined(__FMA__)
+
+void MulMat::gelu(int n, const float * x, float * y) {
+    constexpr float GELU_COEF_A = 0.044715f;
+    constexpr float SQRT_2_OVER_PI  = 0.79788456080286535587989211986876f;
+    //GGML_ASSERT(n%8 == 0);
+    int i = 0;
+#if defined __AVX512F__ && defined __AVX512DQ__
+    {
+        __m512 c1 = _mm512_set1_ps(GELU_COEF_A);
+        __m512 c2 = _mm512_set1_ps(2.f*SQRT_2_OVER_PI);
+        for (; i + 15 < n; i += 16) _mm512_storeu_ps(y + i, v_gelu(_mm512_loadu_ps(x + i), c1, c2));
+    }
+#endif
+#if defined __AVX2__ && defined __FMA__
+    if (i + 7 < n) {
+        __m256 c1 = _mm256_set1_ps(GELU_COEF_A);
+        __m256 c2 = _mm256_set1_ps(2.f*SQRT_2_OVER_PI);
+        for (; i + 7 < n; i += 8) _mm256_storeu_ps(y + i, v_gelu(_mm256_loadu_ps(x + i), c1, c2));
+
+    }
+#endif
     for (; i < n; ++i) y[i] = 0.5f*x[i]*(1.0f + tanhf(SQRT_2_OVER_PI*x[i]*(1.0f + GELU_COEF_A*x[i]*x[i])));
 }
 
@@ -1581,7 +1583,7 @@ void MulMat::silu(int n, const float * x, float * y) {
 #if defined __AVX512F__ && defined __AVX512DQ__
     for (; i + 15 < n; i += 16) _mm512_storeu_ps(y + i, v_silu(_mm512_loadu_ps(x + i)));
 #endif
-#if defined __AVX2__ && defined __FMA__
+#if defined __AVX__
     for (; i + 7 < n; i += 8) _mm256_storeu_ps(y + i, v_silu(_mm256_loadu_ps(x + i)));
 #endif
     for (; i < n; ++i) y[i] = x[i]/(1.0f + expf(-x[i]));
@@ -1592,7 +1594,7 @@ void MulMat::situ(int n, const float * x, float * y, float beta) {
 #if defined __AVX512F__ && defined __AVX512DQ__
     for (; i + 15 < n; i += 16) _mm512_storeu_ps(y + i, v_situ(_mm512_loadu_ps(x + i), beta));
 #endif
-#if defined __AVX2__ && defined __FMA__
+#if defined __AVX__
     for (; i + 7 < n; i += 8) _mm256_storeu_ps(y + i, v_situ(_mm256_loadu_ps(x + i), beta));
 #endif
     for (; i < n; ++i) y[i] = beta*tanhf(x[i]*inv_beta)/(1.0f + expf(-x[i]));
@@ -1607,7 +1609,7 @@ void MulMat::situ_up(int n, const float * x, float * y, float beta) {
 #if defined __AVX512F__ && defined __AVX512DQ__
     for (; i + 15 < n; i += 16) _mm512_storeu_ps(y + i, v_situ_up(_mm512_loadu_ps(x + i), beta));
 #endif
-#if defined __AVX2__ && defined __FMA__
+#if defined __AVX__
     for (; i + 7 < n; i += 8) _mm256_storeu_ps(y + i, v_situ_up(_mm256_loadu_ps(x + i), beta));
 #endif
     for (; i < n; ++i) y[i] = beta*tanhf(x[i]*inv_beta);
@@ -1708,7 +1710,7 @@ void * iqk_repack_k(int int_type_k, int nek0, int nek1, int nek2, int nek3, long
         for (int k = 0; k < 8; ++k) x8[k] = (const block_q8_0 *)(this_data + k*nbk1);
         for (int ib = 0; ib < nblock; ++ib) {
             for (int k = 0; k < 8; ++k) y[ib].d[k] = x8[k][ib].d;
-#ifdef __AVX2__
+#ifdef __AV2__
             auto m0 = MM256_SET_M128I(_mm_loadu_si128((const __m128i *)x8[4][ib].qs), _mm_loadu_si128((const __m128i *)x8[0][ib].qs));
             auto m1 = MM256_SET_M128I(_mm_loadu_si128((const __m128i *)x8[5][ib].qs), _mm_loadu_si128((const __m128i *)x8[1][ib].qs));
             auto m2 = MM256_SET_M128I(_mm_loadu_si128((const __m128i *)x8[6][ib].qs), _mm_loadu_si128((const __m128i *)x8[2][ib].qs));
@@ -2039,12 +2041,12 @@ void iqk_fused_delta_net_impl(int n_heads, int gqa_ratio, int repeat_type, int n
                 vqksum = _mm512_fmadd_ps(vk, vq, vqksum);
             }
             kq_sum = _mm512_reduce_add_ps(vqksum);
-#elif defined __AVX2__
+#elif defined __AVX__
             auto vqksum = _mm256_setzero_ps();
             for (int i = 0; i < head_dim; i += 8) {
                 auto vq = _mm256_loadu_ps(q_t + i);
                 auto vk = _mm256_loadu_ps(k_t + i);
-                vqksum = _mm256_fmadd_ps(vk, vq, vqksum);
+                vqksum = FMADD_PS(vk, vq, vqksum);
             }
             kq_sum = hsum_float_8(vqksum);
 #else
@@ -2686,7 +2688,7 @@ bool iqk_indexer_topk(struct ggml_tensor * dst, void * work_buffer, barrier_t ba
                 } else {
                     for (int i = 0; i < nk; ++i) this_score[i] = 0;
                 }
-#ifdef __AVX2__
+#ifdef __AVX__
                 if constexpr (k_indexer_chunks == 64) {
                     if (nk == k_indexer_chunks) {
                         __m256 acc[k_indexer_chunks/8];
@@ -2695,7 +2697,7 @@ bool iqk_indexer_topk(struct ggml_tensor * dst, void * work_buffer, barrier_t ba
                             auto wi = _mm256_set1_ps(this_w[i]);
                             for (int j = 0; j < k_indexer_chunks/8; ++j) {
                                 auto relu = _mm256_max_ps(_mm256_setzero_ps(), _mm256_loadu_ps(kq_i + 8*j));
-                                acc[j] = _mm256_fmadd_ps(wi, relu, acc[j]);
+                                acc[j] = FMADD_PS(wi, relu, acc[j]);
                             }
                             kq_i += k_indexer_chunks;
                         }
@@ -2865,3 +2867,65 @@ bool iqk_indexer_topk(struct ggml_tensor * dst, void * work_buffer, barrier_t ba
 
     return true;
 }
+
+#else  // IQK_IMPLEMENT
+
+#include "ggml-impl.h"
+
+extern "C" IQK_API bool iqk_mul_mat(int, long, long, long, int, const void *, long, int, const void *, long, float *, long, int, int) {
+    GGML_ABORT("Unsupported CPU. You may need to manually set compilation flags\n");
+    return false;
+}
+
+extern "C" IQK_API bool iqk_mul_mat_4d(long /*Nx*/, long /*Ny*/, long /*ne00*/,
+        long /*ne02*/, long /*ne03*/, long /*ne12*/, long /*ne13*/,
+        long /*nb02*/, long /*nb03*/, long /*nb12*/, long /*nb13*/, long /*nb2*/, long /*nb3*/,
+        int /*typeA*/, const void * /*A*/, long /*strideA*/,
+        int /*typeB*/, const void * /*B*/, long /*strideB*/,
+        float * /*C*/, long /*stride_C*/, int /*ith*/, int /*nth*/) {
+    GGML_ABORT("Unsupported CPU. You may need to manually set compilation flags\n");
+    return false;
+}
+
+extern "C" IQK_API bool iqk_mul_mat_moe(long, long, long, int, int, const void *, long, int, const void *, long, float *, long, long,
+        const void *, int, int) {
+    GGML_ABORT("Unsupported CPU. You may need to manually set compilation flags\n");
+    return false;
+}
+
+extern "C" IQK_API bool iqk_moe_fused_up_gate(long /*Nx*/, long /*Ny*/, long /*ne00*/, int /*ne11*/, int /*unary_op*/,
+        int /*typeA*/, const void * /*Aup*/, const void * /*Agate*/, long /*strideA*/,
+        int /*typeB*/, const void * /*B*/, long /*strideB*/,
+        float * /*C*/, long /*nb1*/, long /*nb2*/, const void * /*vrow_mapping*/, float,
+        float, float, int /*ith*/, int /*nth*/) {
+    GGML_ABORT("Unsupported CPU. You may need to manually set compilation flags\n");
+    return false;
+}
+
+bool iqk_fused_delta_net(int, int, int, int, int, int,
+        size_t, size_t, size_t,
+        const float *, const float *, const float *, const float *, const float *,
+        const float *, float *, float *, float *, int, int, int) {
+    return false;
+}
+
+bool iqk_indexer_topk(struct ggml_tensor *, void *, barrier_t, void *, int, int) {
+    return false;
+}
+
+size_t iqk_idx_topk_work_buffer_size(const struct ggml_tensor *, int) {
+    return 0;
+}
+
+extern "C" IQK_API size_t iqk_fa_work_buffer_size(const struct ggml_tensor *, int) {
+    return 0;
+}
+
+extern "C" IQK_API void iqk_topk_moe(int, int, int, const float *, float *, int32_t *, int, int) {
+    GGML_ABORT("Unsupported CPU. You may need to manually set compilation flags\n");
+}
+
+#if defined __GNUC__
+#pragma GCC diagnostic pop
+#endif
+#endif
