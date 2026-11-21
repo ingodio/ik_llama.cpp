@@ -312,18 +312,19 @@ static inline __m128 v_expf(__m128 x)
     return _mm_mul_ps(er, scale);
 }
 static inline __m128 v_tanh(__m128 x) {
-    const __m128 one = _mm_set1_ps(1.0f);
-    const __m128 two = _mm_set1_ps(2.0f);
-    const __m128 sign = _mm_and_ps(
-        x, _mm_set1_ps(-0.0f));
-    const __m128 ax = _mm_andnot_ps(
-        _mm_set1_ps(-0.0f), x);
-    const __m128 e = v_expf128(
-        _mm_mul_ps(_mm_sub_ps(_mm_setzero_ps(), two), ax));
-    const __m128 num = _mm_sub_ps(one, e);
-    const __m128 den = _mm_add_ps(one, e);
-    const __m128 y = _mm_mul_ps(num, _mm_rcp_ps(den));
-    return _mm_xor_ps(y, sign);
+    const __m128 zero = _mm_setzero_ps();
+    const __m128 one  = _mm_set1_ps(1.0f);
+    const __m128 three = _mm_set1_ps(3.0f);
+    const __m128 c27 = _mm_set1_ps(27.0f);
+    const __m128 c9 = _mm_set1_ps(9.0f);
+    x = _mm_max_ps(_mm_sub_ps(zero, three),
+                   _mm_min_ps(x, three));
+    const __m128 x2 = _mm_mul_ps(x, x);
+    const __m128 num = _mm_mul_ps(
+        x, _mm_add_ps(c27, x2));
+    const __m128 den = _mm_add_ps(
+        c27, _mm_mul_ps(c9, x2));
+    return _mm_mul_ps(num, _mm_rcp_ps(den));
 }
 #endif // AVX
 #endif // IQK_IMPLEMENT

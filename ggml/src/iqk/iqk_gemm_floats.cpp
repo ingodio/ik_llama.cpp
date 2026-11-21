@@ -57,7 +57,7 @@ struct QFBase {
         auto sum2 = _mm_add_ps(_mm512_extractf32x4_ps(acc, 2), _mm512_extractf32x4_ps(acc, 3));
         return _mm_add_ps(sum1, sum2);
     }
-#else
+#elif __AVX2__
     constexpr static int k_step = 8;
     using Data = __m256;
     using Acc  = __m256;
@@ -97,8 +97,7 @@ struct QFBase {
     static inline Data load4Floats(const Float * x) {
         return _mm256_insertf128_ps(_mm256_setzero_ps(), load128(x), 0);
     }
-#endif
-#if defined(__AVX__) && !defined(__AVX2__)
+#elif defined(__AVX__)
 static inline __m256 FMADD_PS(__m256 a, __m256 b, __m256 c) {
     return _mm256_add_ps(_mm256_mul_ps(a, b), c);
 }

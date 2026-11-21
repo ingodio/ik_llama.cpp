@@ -236,6 +236,14 @@ static inline float hsum_float_4(__m128 x) {
 static inline float hsum_float_8(__m256 x) {
     return hsum_float_4(_mm_add_ps(_mm256_castps256_ps128(x), _mm256_extractf128_ps(x, 1)));
 }
+static inline float hmax_float_4(__m128 x) {
+    x = _mm_max_ps( x, _mm_movehl_ps(x, x));
+    x = _mm_max_ss( x, _mm_movehdup_ps( x));
+    return  _mm_cvtss_f32(x);
+}
+static inline float hmax_float_8(__m256 x) {
+    return hmax_float_4(_mm_max_ps(_mm256_extractf128_ps(x, 1), _mm256_castps256_ps128(x)));
+}
 #endif
 #ifdef __AVX2__
 static inline int hsum_i32_8(const __m256i a) {
@@ -244,14 +252,6 @@ static inline int hsum_i32_8(const __m256i a) {
     const __m128i sum64 = _mm_add_epi32(hi64, sum128);
     const __m128i hi32 = _mm_shuffle_epi32(sum64, _MM_SHUFFLE(2, 3, 0, 1));
     return _mm_cvtsi128_si32(_mm_add_epi32(sum64, hi32));
-}
-static inline float hmax_float_4(__m128 x) {
-    x = _mm_max_ps( x, _mm_movehl_ps(x, x));
-    x = _mm_max_ss( x, _mm_movehdup_ps( x));
-    return  _mm_cvtss_f32(x);
-}
-static inline float hmax_float_8(__m256 x) {
-    return hmax_float_4(_mm_max_ps(_mm256_extractf128_ps(x, 1), _mm256_castps256_ps128(x)));
 }
 static inline float hmax_f32_4(__m128 x) { return hmax_float_4(x); }
 static inline float hmax_f32_8(__m256 x) { return hmax_float_8(x); }
@@ -373,33 +373,8 @@ struct Scales8KBase {
     const __m128i shuffles[2] = {_mm_set_epi32(0x07060706, 0x05040504, 0x03020302, 0x01000100),
                                  _mm_set_epi32(0x0f0e0f0e, 0x0d0c0d0c, 0x0b0a0b0a, 0x09080908)};
 };
-
-template <typename Block, bool per_row_scale = false, bool is_f16 = false>
-struct BaseDequantizer {
-    BaseDequantizer(const void * vx, size_t bx) : vx(vx), bx(bx) {}
-    inline void new_row(int ix) {
-        if constexpr (per_row_scale) {
-            if constexpr (is_f16) {
-                const ggml_half * dptr = (const ggml_half *)((const char *)vx + bx*ix);
-                d = GGML_FP16_TO_FP32(*dptr);
-                x = (const Block *)(dptr + 1);
-            } else {
-                const float * dptr = (const float *)((const char *)vx + bx*ix);
-                d = *dptr;
-                x = (const Block *)(dptr + 1);
-            }
-        } else {
-            x = (const Block *)((const char *)vx + bx*ix);
-        }
-    }
-
-    const void *  vx;
-    const size_t  bx;
-    const Block * x;
-
-    float d;
-};
 #endif
+#ifdef __AVX2__
 template <typename Q8, typename Bits>
 static inline void multiply_add(const Bits& bits, const __m256i * scales, int j, int i, const Q8& q8, __m256i * sumi) {
     if (j == 0) {

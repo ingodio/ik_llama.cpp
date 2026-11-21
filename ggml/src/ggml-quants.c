@@ -712,7 +712,8 @@ void quantize_row_q2_0(const float * restrict x, void * restrict y, int64_t k) {
     iqk_quantize_q4_0(x, y, k);
 #else
     quantize_row_q4_0_ref(x, y, k);
-#endif}
+#endif
+}
 
 size_t quantize_q2_0(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrows, int64_t n_per_row, const float * imatrix, const struct quantize_user_data * user_data) {
     GGML_UNUSED(imatrix);
@@ -16005,7 +16006,6 @@ bool ggml_validate_row_data(enum ggml_type type, const void * data, size_t nbyte
         case GGML_TYPE_TQP6:
         case GGML_TYPE_TQP7: break;
             // nothing to validate
-            break;
         default:
             {
                 fprintf(stderr, "%s: invalid type %d\n", __func__, type);

@@ -4138,7 +4138,182 @@ inline static void ggml_vec_simd_sigmoid_f32(int n, const float * x, float * y) 
         ggml_vec_sigmoid_f32(n - i, y + i, x + i);
     }
 }
+#elif __AVX__
+static inline __m256 ggml_v_expf(__m256 x){
+    const __m256 one = _mm256_set1_ps(1.0f);
+    x = _mm256_min_ps(x, _mm256_set1_ps(88.0f));
+    x = _mm256_max_ps(x, _mm256_set1_ps(-87.0f));
+    const __m256 log2e = _mm256_set1_ps(1.44269504088896341f);
+    __m256 fx = _mm256_add_ps(
+        _mm256_mul_ps(x, log2e),
+        _mm256_set1_ps(12582912.0f));
+    fx = _mm256_sub_ps(fx, _mm256_set1_ps(12582912.0f));
+    __m256 r = _mm256_sub_ps(
+        x, _mm256_mul_ps(fx, _mm256_set1_ps(0.693359375f)));
+    r = _mm256_sub_ps(
+        r, _mm256_mul_ps(fx, _mm256_set1_ps(-0.00021219444005f)));
+    const __m256 c1 = _mm256_set1_ps(1.9875691500e-4f);
+    const __m256 c2 = _mm256_set1_ps(1.3981999507e-3f);
+    const __m256 c3 = _mm256_set1_ps(8.3334519073e-3f);
+    const __m256 c4 = _mm256_set1_ps(4.1665795894e-2f);
+    const __m256 c5 = _mm256_set1_ps(1.6666665459e-1f);
+    const __m256 c6 = _mm256_set1_ps(5.0000001201e-1f);
+    const __m256 r2 = _mm256_mul_ps(r, r);
+    const __m256 r4 = _mm256_mul_ps(r2, r2);
+    const __m256 p0 = _mm256_add_ps(c1, _mm256_mul_ps(c2, r));
+    const __m256 p1 = _mm256_add_ps(c3, _mm256_mul_ps(c4, r));
+    const __m256 p2 = _mm256_add_ps(c5, _mm256_mul_ps(c6, r));
+    const __m256 p01 = _mm256_add_ps(
+        p0, _mm256_mul_ps(p1, r2));
+    const __m256 p = _mm256_add_ps(
+        p01, _mm256_mul_ps(p2, r4));
+    const __m256 er = _mm256_add_ps(
+        one, _mm256_add_ps(r, _mm256_mul_ps(r2, p)));
+    __m128 fx_lo = _mm256_castps256_ps128(fx);
+    __m128 fx_hi = _mm256_extractf128_ps(fx, 1);
+    __m128i ni_lo = _mm_cvttps_epi32(fx_lo);
+    __m128i ni_hi = _mm_cvttps_epi32(fx_hi);
+    const __m128i bias = _mm_set1_epi32(127);
+    ni_lo = _mm_add_epi32(ni_lo, bias);
+    ni_hi = _mm_add_epi32(ni_hi, bias);
+    ni_lo = _mm_slli_epi32(ni_lo, 23);
+    ni_hi = _mm_slli_epi32(ni_hi, 23);
+    __m128 scale_lo = _mm_castsi128_ps(ni_lo);
+    __m128 scale_hi = _mm_castsi128_ps(ni_hi);
+    __m256 scale = _mm256_castps128_ps256(scale_lo);
+    scale = _mm256_insertf128_ps(scale, scale_hi, 1);
+    return _mm256_mul_ps(er, scale);
+}
+static inline __m256 ggml_v_tanh(__m256 x){
+    const __m256 one = _mm256_set1_ps(1.0f);
+    const __m256 two = _mm256_set1_ps(2.0f);
+    const __m256 sign_mask = _mm256_set1_ps(-0.0f);
+    const __m256 sign = _mm256_and_ps(x, sign_mask);
+    const __m256 ax = _mm256_andnot_ps(sign_mask, x);
+    const __m256 e = ggml_v_expf(_mm256_mul_ps(_mm256_sub_ps( _mm256_setzero_ps(), two), ax));
+    const __m256 num = _mm256_sub_ps(one, e);
+    const __m256 den = _mm256_add_ps(one, e);
+    const __m256 y = _mm256_mul_ps(num, _mm256_rcp_ps(den));
+    return _mm256_xor_ps(y, sign);
+}
+static inline __m256 ggml_v_softcap(__m256 x, float s_before, float s_after){
+    const __m256 before = _mm256_set1_ps(s_before);
+    const __m256 after  = _mm256_set1_ps(s_after);
+    return _mm256_mul_ps(after, ggml_v_tanh(_mm256_mul_ps(x, before)));
+}
+static inline __m256 ggml_v_silu(__m256 x)
+{
+    const __m256 one = _mm256_set1_ps(1.0f);
+    const __m256 two = _mm256_set1_ps(2.0f);
 
+    const __m256 neg_x = _mm256_sub_ps(_mm256_setzero_ps(), x);
+    const __m256 exp_neg_x = ggml_v_expf(neg_x);
+    const __m256 denom = _mm256_add_ps(one, exp_neg_x);
+
+    __m256 r = _mm256_rcp_ps(denom);
+    r = _mm256_mul_ps(r,
+        _mm256_sub_ps(two, _mm256_mul_ps(denom, r)));
+
+    return _mm256_mul_ps(x, r);
+}
+inline static void ggml_vec_sigmoid_mul_f32(int n, const float *x, const float *y, float *z)
+{
+    const __m256 zero = _mm256_setzero_ps();
+    const __m256 one  = _mm256_set1_ps(1.0f);
+    int i = 0;
+#ifdef GGML_LOOP32
+    for (; i + 31 < n; i += 32) {
+        __m256 x0 = _mm256_loadu_ps(x + i);
+        __m256 x1 = _mm256_loadu_ps(x + i + 8);
+        __m256 x2 = _mm256_loadu_ps(x + i + 16);
+        __m256 x3 = _mm256_loadu_ps(x + i + 24);
+        __m256 y0 = _mm256_loadu_ps(y + i);
+        __m256 y1 = _mm256_loadu_ps(y + i + 8);
+        __m256 y2 = _mm256_loadu_ps(y + i + 16);
+        __m256 y3 = _mm256_loadu_ps(y + i + 24);
+        __m256 e0 = v_expf(_mm256_sub_ps(zero, x0));
+        __m256 e1 = v_expf(_mm256_sub_ps(zero, x1));
+        __m256 e2 = v_expf(_mm256_sub_ps(zero, x2));
+        __m256 e3 = v_expf(_mm256_sub_ps(zero, x3));
+        __m256 d0 = _mm256_add_ps(one, e0);
+        __m256 d1 = _mm256_add_ps(one, e1);
+        __m256 d2 = _mm256_add_ps(one, e2);
+        __m256 d3 = _mm256_add_ps(one, e3);
+        __m256 r0 = _mm256_rcp_ps(d0);
+        __m256 r1 = _mm256_rcp_ps(d1);
+        __m256 r2 = _mm256_rcp_ps(d2);
+        __m256 r3 = _mm256_rcp_ps(d3);
+        _mm256_storeu_ps(z + i,      _mm256_mul_ps(y0, r0));
+        _mm256_storeu_ps(z + i + 8,  _mm256_mul_ps(y1, r1));
+        _mm256_storeu_ps(z + i + 16, _mm256_mul_ps(y2, r2));
+        _mm256_storeu_ps(z + i + 24, _mm256_mul_ps(y3, r3));
+    }
+#endif
+    for (; i + 7 < n; i += 8) {
+        __m256 vx = _mm256_loadu_ps(x + i);
+        __m256 vy = _mm256_loadu_ps(y + i);
+        __m256 e = ggml_v_expf(_mm256_sub_ps(zero, vx));
+        __m256 d = _mm256_add_ps(one, e);
+        _mm256_storeu_ps(z + i,
+            _mm256_mul_ps(vy, _mm256_rcp_ps(d)));
+    }
+
+    for (; i < n; ++i)
+        z[i] = y[i] / (1.0f + expf(-x[i]));
+}
+inline static void ggml_vec_simd_sigmoid_f32(int n, const float * x, float * y) {
+    const __m256 zero = _mm256_setzero_ps();
+    const __m256 one = _mm256_set1_ps(1.0f);
+    int i = 0;
+#ifdef GGML_LOOP32
+    for (; i + 31 < n; i += 32) {
+        __m256 x0 = _mm256_loadu_ps(x + i);
+        __m256 x1 = _mm256_loadu_ps(x + i + 8);
+        __m256 x2 = _mm256_loadu_ps(x + i + 16);
+        __m256 x3 = _mm256_loadu_ps(x + i + 24);
+        __m256 e0 = ggml_v_expf(_mm256_sub_ps(zero, x0));
+        __m256 e1 = ggml_v_expf(_mm256_sub_ps(zero, x1));
+        __m256 e2 = ggml_v_expf(_mm256_sub_ps(zero, x2));
+        __m256 e3 = ggml_v_expf(_mm256_sub_ps(zero, x3));
+        __m256 d0 = _mm256_add_ps(one, e0);
+        __m256 d1 = _mm256_add_ps(one, e1);
+        __m256 d2 = _mm256_add_ps(one, e2);
+        __m256 d3 = _mm256_add_ps(one, e3);
+        _mm256_storeu_ps(y + i,      _mm256_rcp_ps(d0));
+        _mm256_storeu_ps(y + i + 8,  _mm256_rcp_ps(d1));
+        _mm256_storeu_ps(y + i + 16, _mm256_rcp_ps(d2));
+        _mm256_storeu_ps(y + i + 24, _mm256_rcp_ps(d3));
+    }
+#endif
+    _Pragma("GCC unroll 4")
+    for ( ; i + 7 < n; i += 8) {
+        __m256 vx = _mm256_loadu_ps(x + i);
+        __m256 exp_vx = ggml_v_expf(_mm256_sub_ps(zero, vx));
+        __m256 denom  = _mm256_add_ps(one, exp_vx);
+        __m256 result = _mm256_div_ps(one, denom);
+        _mm256_storeu_ps(y + i, result);
+    }
+    if (i < n) {
+        ggml_vec_sigmoid_f32(n - i, y + i, x + i);
+    }
+}
+//static inline __m256 ggml_v_gelu(__m256 x, __m256 c1, __m256 c2)
+static inline __m256 ggml_v_gelus(__m256 x)
+{
+//    const __m256 one = _mm256_set1_ps(1.0f);
+//    __m256 x2 = _mm256_mul_ps(x, x);
+//    __m256 arg = _mm256_mul_ps(_mm256_mul_ps(
+// x, _mm256_add_ps(one, _mm256_mul_ps(x2, c1))), c2);
+//    __m256 e = ggml_v_expf(arg);
+//    return _mm256_mul_ps(x, _mm256_rcp_ps(_mm256_add_ps(one, e)));
+    const __m256 one = _mm256_set1_ps(1.0f);
+    const __m256 k = _mm256_set1_ps(-1.702f);
+    __m256 z = _mm256_mul_ps(x, k);
+    __m256 e = ggml_v_expf(z);
+    __m256 denom = _mm256_add_ps(one, e);
+    __m256 result = _mm256_mul_ps(x, _mm256_rcp_ps(denom));
+    return result;
+}
 #elif defined(__SSE2__) // __AVX2__ / __ARM_NEON
 
 #if defined(__FMA__)
@@ -4214,7 +4389,23 @@ static void ggml_vec_silu_f32(const int n, float * y, const float * x) {
     for (; i + 15 < n; i += 16) {
         _mm512_storeu_ps(y + i, ggml_v_silu(_mm512_loadu_ps(x + i)));
     }
-#elif defined(__AVX2__) && defined(__FMA__)
+#elif defined(__AVX2__) && defined(__FMA__) || __AVX__
+#ifdef GGML_LOOP32
+    for (; i + 31 < n; i += 32) {
+        __m256 x0 = _mm256_loadu_ps(x + i);
+        __m256 x1 = _mm256_loadu_ps(x + i + 8);
+        __m256 x2 = _mm256_loadu_ps(x + i + 16);
+        __m256 x3 = _mm256_loadu_ps(x + i + 24);
+        __m256 y0 = ggml_v_silu(x0);
+        __m256 y1 = ggml_v_silu(x1);
+        __m256 y2 = ggml_v_silu(x2);
+        __m256 y3 = ggml_v_silu(x3);
+        _mm256_storeu_ps(y + i,      y0);
+        _mm256_storeu_ps(y + i + 8,  y1);
+        _mm256_storeu_ps(y + i + 16, y2);
+        _mm256_storeu_ps(y + i + 24, y3);
+    }
+#endif
     for (; i + 7 < n; i += 8) {
         _mm256_storeu_ps(y + i, ggml_v_silu(_mm256_loadu_ps(x + i)));
     }
@@ -4238,7 +4429,27 @@ static void ggml_vec_mul_silu_f32(const int n, float * z, const float * x, const
     for (; i + 15 < n; i += 16) {
         _mm512_storeu_ps(z + i, _mm512_mul_ps(ggml_v_silu(_mm512_loadu_ps(x + i)), _mm512_loadu_ps(y + i)));
     }
-#elif defined(__AVX2__) && defined(__FMA__)
+#elif defined(__AVX2__) && defined(__FMA__) || __AVX__
+#ifdef GGML_LOOP32
+for (; i + 31 < n; i += 32) {
+    __m256 x0 = _mm256_loadu_ps(x + i);
+    __m256 x1 = _mm256_loadu_ps(x + i + 8);
+    __m256 x2 = _mm256_loadu_ps(x + i + 16);
+    __m256 x3 = _mm256_loadu_ps(x + i + 24);
+    __m256 y0 = _mm256_loadu_ps(y + i);
+    __m256 y1 = _mm256_loadu_ps(y + i + 8);
+    __m256 y2 = _mm256_loadu_ps(y + i + 16);
+    __m256 y3 = _mm256_loadu_ps(y + i + 24);
+    __m256 z0 = _mm256_mul_ps(ggml_v_silu(x0), y0);
+    __m256 z1 = _mm256_mul_ps(ggml_v_silu(x1), y1);
+    __m256 z2 = _mm256_mul_ps(ggml_v_silu(x2), y2);
+    __m256 z3 = _mm256_mul_ps(ggml_v_silu(x3), y3);
+    _mm256_storeu_ps(z + i,      z0);
+    _mm256_storeu_ps(z + i + 8,  z1);
+    _mm256_storeu_ps(z + i + 16, z2);
+    _mm256_storeu_ps(z + i + 24, z3);
+}
+#endif
     for (; i + 7 < n; i += 8) {
         _mm256_storeu_ps(z + i, _mm256_mul_ps(ggml_v_silu(_mm256_loadu_ps(x + i)), _mm256_loadu_ps(y + i)));
     }
@@ -4262,7 +4473,27 @@ static void ggml_vec_swiglu_f32(const int n, float * y, const float * x) {
     for (; i + 15 < n; i += 16) {
         _mm512_storeu_ps(y + i, _mm512_mul_ps(ggml_v_silu(_mm512_loadu_ps(x + i)), _mm512_loadu_ps(x + i + n)));
     }
-#elif defined(__AVX2__) && defined(__FMA__)
+#elif defined(__AVX2__) && defined(__FMA__) || __AVX__
+#ifdef GGML_LOOP32
+for (; i + 31 < n; i += 32) {
+    __m256 x0 = _mm256_loadu_ps(x + i);
+    __m256 x1 = _mm256_loadu_ps(x + i + 8);
+    __m256 x2 = _mm256_loadu_ps(x + i + 16);
+    __m256 x3 = _mm256_loadu_ps(x + i + 24);
+    __m256 g0 = _mm256_loadu_ps(x + i + n);
+    __m256 g1 = _mm256_loadu_ps(x + i + n + 8);
+    __m256 g2 = _mm256_loadu_ps(x + i + n + 16);
+    __m256 g3 = _mm256_loadu_ps(x + i + n + 24);
+    __m256 y0 = _mm256_mul_ps(ggml_v_silu(x0), g0);
+    __m256 y1 = _mm256_mul_ps(ggml_v_silu(x1), g1);
+    __m256 y2 = _mm256_mul_ps(ggml_v_silu(x2), g2);
+    __m256 y3 = _mm256_mul_ps(ggml_v_silu(x3), g3);
+    _mm256_storeu_ps(y + i,      y0);
+    _mm256_storeu_ps(y + i + 8,  y1);
+    _mm256_storeu_ps(y + i + 16, y2);
+    _mm256_storeu_ps(y + i + 24, y3);
+}
+#endif
     for (; i + 7 < n; i += 8) {
         _mm256_storeu_ps(y + i, _mm256_mul_ps(ggml_v_silu(_mm256_loadu_ps(x + i)), _mm256_loadu_ps(x + i + n)));
     }
@@ -4286,7 +4517,27 @@ static void ggml_vec_swiglu_f32_glu(const int n, float * y, const float * x, con
     for (; i + 15 < n; i += 16) {
         _mm512_storeu_ps(y + i, _mm512_mul_ps(ggml_v_silu(_mm512_loadu_ps(x + i)), _mm512_loadu_ps(g + i)));
     }
-#elif defined(__AVX2__) && defined(__FMA__)
+#elif defined(__AVX2__) && defined(__FMA__) || __AVX__
+#ifdef GGML_LOOP32
+for (; i + 31 < n; i += 32) {
+    __m256 x0 = _mm256_loadu_ps(x + i);
+    __m256 x1 = _mm256_loadu_ps(x + i + 8);
+    __m256 x2 = _mm256_loadu_ps(x + i + 16);
+    __m256 x3 = _mm256_loadu_ps(x + i + 24);
+    __m256 g0 = _mm256_loadu_ps(g + i);
+    __m256 g1 = _mm256_loadu_ps(g + i + 8);
+    __m256 g2 = _mm256_loadu_ps(g + i + 16);
+    __m256 g3 = _mm256_loadu_ps(g + i + 24);
+    __m256 y0 = _mm256_mul_ps(ggml_v_silu(x0), g0);
+    __m256 y1 = _mm256_mul_ps(ggml_v_silu(x1), g1);
+    __m256 y2 = _mm256_mul_ps(ggml_v_silu(x2), g2);
+    __m256 y3 = _mm256_mul_ps(ggml_v_silu(x3), g3);
+    _mm256_storeu_ps(y + i,      y0);
+    _mm256_storeu_ps(y + i + 8,  y1);
+    _mm256_storeu_ps(y + i + 16, y2);
+    _mm256_storeu_ps(y + i + 24, y3);
+}
+#endif
     for (; i + 7 < n; i += 8) {
         _mm256_storeu_ps(y + i, _mm256_mul_ps(ggml_v_silu(_mm256_loadu_ps(x + i)), _mm256_loadu_ps(g + i)));
     }
@@ -4318,7 +4569,25 @@ static void ggml_vec_tanh_f32(const int n, float * y, const float * x) {
     for (; i + 15 < n; i += 16) {
         _mm512_storeu_ps(y + i, ggml_v_tanh(_mm512_loadu_ps(x + i)));
     }
-#elif defined(__AVX2__) && defined(__FMA__)
+#elif defined(__AVX2__) && defined(__FMA__) || __AVX__
+#ifdef GGML_LOOP32
+for (; i + 31 < n; i += 32) {
+    __m256 x0 = _mm256_loadu_ps(x + i);
+    __m256 x1 = _mm256_loadu_ps(x + i + 8);
+    __m256 x2 = _mm256_loadu_ps(x + i + 16);
+    __m256 x3 = _mm256_loadu_ps(x + i + 24);
+
+    __m256 y0 = ggml_v_tanh(x0);
+    __m256 y1 = ggml_v_tanh(x1);
+    __m256 y2 = ggml_v_tanh(x2);
+    __m256 y3 = ggml_v_tanh(x3);
+
+    _mm256_storeu_ps(y + i,      y0);
+    _mm256_storeu_ps(y + i + 8,  y1);
+    _mm256_storeu_ps(y + i + 16, y2);
+    _mm256_storeu_ps(y + i + 24, y3);
+}
+#endif
     for (; i + 7 < n; i += 8) {
         _mm256_storeu_ps(y + i, ggml_v_tanh(_mm256_loadu_ps(x + i)));
     }
@@ -4344,7 +4613,23 @@ static void ggml_vec_cpy_softcap_f32(const int n, const float * x, float * y, fl
     for (; i + 15 < n; i += 16) {
         _mm512_storeu_ps(y + i, ggml_v_softcap(_mm512_loadu_ps(x + i), vs_before, vs_after));
     }
-#elif defined(__AVX2__) && defined(__FMA__)
+#elif defined(__AVX2__) && defined(__FMA__) || __AVX__
+#ifdef GGML_LOOP32
+for (; i + 31 < n; i += 32) {
+    __m256 x0 = _mm256_loadu_ps(x + i);
+    __m256 x1 = _mm256_loadu_ps(x + i + 8);
+    __m256 x2 = _mm256_loadu_ps(x + i + 16);
+    __m256 x3 = _mm256_loadu_ps(x + i + 24);
+    __m256 y0 = ggml_v_softcap(x0, s_before, s_after);
+    __m256 y1 = ggml_v_softcap(x1, s_before, s_after);
+    __m256 y2 = ggml_v_softcap(x2, s_before, s_after);
+    __m256 y3 = ggml_v_softcap(x3, s_before, s_after);
+    _mm256_storeu_ps(y + i,      y0);
+    _mm256_storeu_ps(y + i + 8,  y1);
+    _mm256_storeu_ps(y + i + 16, y2);
+    _mm256_storeu_ps(y + i + 24, y3);
+}
+#endif
     for (; i + 7 < n; i += 8) {
         _mm256_storeu_ps(y + i, ggml_v_softcap(_mm256_loadu_ps(x + i), s_before, s_after));
     }
@@ -4382,7 +4667,23 @@ static void ggml_vec_softcap_f32(const int n, float * x, float s_before, float s
     for (; i + 15 < n; i += 16) {
         _mm512_storeu_ps(x + i, ggml_v_softcap(_mm512_loadu_ps(x + i), vs_before, vs_after));
     }
-#elif defined(__AVX2__) && defined(__FMA__)
+#elif defined(__AVX2__) && defined(__FMA__) || __AVX__
+#ifdef GGML_LOOP32
+for (; i + 31 < n; i += 32) {
+    __m256 x0 = _mm256_loadu_ps(x + i);
+    __m256 x1 = _mm256_loadu_ps(x + i + 8);
+    __m256 x2 = _mm256_loadu_ps(x + i + 16);
+    __m256 x3 = _mm256_loadu_ps(x + i + 24);
+    __m256 y0 = ggml_v_softcap(x0, s_before, s_after);
+    __m256 y1 = ggml_v_softcap(x1, s_before, s_after);
+    __m256 y2 = ggml_v_softcap(x2, s_before, s_after);
+    __m256 y3 = ggml_v_softcap(x3, s_before, s_after);
+    _mm256_storeu_ps(x + i,      y0);
+    _mm256_storeu_ps(x + i + 8,  y1);
+    _mm256_storeu_ps(x + i + 16, y2);
+    _mm256_storeu_ps(x + i + 24, y3);
+}
+#endif
     for (; i + 7 < n; i += 8) {
         _mm256_storeu_ps(x + i, ggml_v_softcap(_mm256_loadu_ps(x + i), s_before, s_after));
     }
@@ -4401,7 +4702,15 @@ static void ggml_vec_softcap_f32(const int n, float * x, float s_before, float s
         x[i] = s_after*tanhf(x[i]*s_before);
     }
 }
-
+static inline float hmax256_ps(__m256 v) {
+    __m128 m = _mm_max_ps(
+        _mm256_castps256_ps128(v),
+        _mm256_extractf128_ps(v, 1)
+    );
+    m = _mm_max_ps(m, _mm_movehl_ps(m, m));
+    m = _mm_max_ss(m, _mm_movehdup_ps(m));
+    return _mm_cvtss_f32(m);
+}
 static float ggml_vec_softcap_max_f32(const int n, float * x, float s_before, float s_after) {
     int i = 0;
     float max = -INFINITY;
@@ -4415,10 +4724,42 @@ static float ggml_vec_softcap_max_f32(const int n, float * x, float s_before, fl
         vmax = _mm512_max_ps(vmax, y);
     }
     max = _mm512_reduce_max_ps(vmax);
-#elif defined(__AVX2__) && defined(__FMA__)
+#elif defined(__AVX2__) && defined(__FMA__) || __AVX__
+  #ifdef GGML_LOOP32
+    const __m256 vb = _mm256_set1_ps(s_before);
+    const __m256 va = _mm256_set1_ps(s_after);
+    __m256 max0 = _mm256_set1_ps(-INFINITY);
+    __m256 max1 = _mm256_set1_ps(-INFINITY);
+    __m256 max2 = _mm256_set1_ps(-INFINITY);
+    __m256 max3 = _mm256_set1_ps(-INFINITY);
+    for (; i + 31 < n; i += 32) {
+        __m256 y0 = ggml_v_softcap(_mm256_loadu_ps(x + i),      vb, va);
+        __m256 y1 = ggml_v_softcap(_mm256_loadu_ps(x + i + 8),  vb, va);
+        __m256 y2 = ggml_v_softcap(_mm256_loadu_ps(x + i + 16), vb, va);
+        __m256 y3 = ggml_v_softcap(_mm256_loadu_ps(x + i + 24), vb, va);
+        _mm256_storeu_ps(x + i,      y0);
+        _mm256_storeu_ps(x + i + 8,  y1);
+        _mm256_storeu_ps(x + i + 16, y2);
+        _mm256_storeu_ps(x + i + 24, y3);
+        max0 = _mm256_max_ps(max0, y0);
+        max1 = _mm256_max_ps(max1, y1);
+        max2 = _mm256_max_ps(max2, y2);
+        max3 = _mm256_max_ps(max3, y3);
+    }
+    __m256 vmax = _mm256_max_ps(
+        _mm256_max_ps(max0, max1),
+        _mm256_max_ps(max2, max3)
+    );
+  #endif
     for (; i + 7 < n; i += 8) {
         _mm256_storeu_ps(x + i, ggml_v_softcap(_mm256_loadu_ps(x + i), s_before, s_after));
+  #ifdef GGML_LOOP32
+        vmax = _mm256_max_ps(vmax, y);
+  #endif
     }
+  #ifdef GGML_LOOP32
+    max = hmax256_ps(vmax);
+  #endif
 #elif defined(__SSE2__)
     for (; i + 3 < n; i += 4) {
         _mm_storeu_ps(x + i, ggml_v_softcap(_mm_loadu_ps(x + i), s_before, s_after));
@@ -4467,11 +4808,31 @@ inline static void ggml_vec_gelu_f32(const int n, float * y, const float * x) {
     for (; i + 15 < n; i += 16) {
         _mm512_storeu_ps(y + i, ggml_v_gelu(_mm512_loadu_ps(x + i), c1, c2));
     }
-#elif defined __AVX2__ && defined __FMA__
-    __m256 c1 = _mm256_set1_ps(GELU_COEF_A);
-    __m256 c2 = _mm256_set1_ps(2.f*SQRT_2_OVER_PI);
+#elif defined __AVX2__ && defined __FMA__ || __AVX__
+//    __m256 c1 = _mm256_set1_ps(GELU_COEF_A);
+//    __m256 c2 = _mm256_set1_ps(2.f*SQRT_2_OVER_PI);
+#ifdef GGML_LOOP32
+    for (; i + 31 < n; i += 32) {
+        __m256 x0 = _mm256_loadu_ps(x + i);
+        __m256 x1 = _mm256_loadu_ps(x + i + 8);
+        __m256 x2 = _mm256_loadu_ps(x + i + 16);
+        __m256 x3 = _mm256_loadu_ps(x + i + 24);
+//        __m256 y0 = ggml_v_gelu(x0, c1, c2);
+//        __m256 y1 = ggml_v_gelu(x1, c1, c2);
+//        __m256 y2 = ggml_v_gelu(x2, c1, c2);
+        __m256 y3 = ggml_v_gelus(x3);
+        __m256 y0 = ggml_v_gelus(x0);
+        __m256 y1 = ggml_v_gelus(x1);
+        __m256 y2 = ggml_v_gelus(x2);
+        __m256 y3 = ggml_v_gelus(x3);
+        _mm256_storeu_ps(y + i,      y0);
+        _mm256_storeu_ps(y + i + 8,  y1);
+        _mm256_storeu_ps(y + i + 16, y2);
+        _mm256_storeu_ps(y + i + 24, y3);
+    }
+#endif
     for (; i + 7 < n; i += 8) {
-        _mm256_storeu_ps(y + i, ggml_v_gelu(_mm256_loadu_ps(x + i), c1, c2));
+        _mm256_storeu_ps(y + i, ggml_v_gelus(_mm256_loadu_ps(x + i)));
     }
 #endif
 #ifdef GGML_GELU_FP16
@@ -4506,7 +4867,6 @@ inline static void ggml_vec_gelu_erf_f32(const int n, float * y, const float * x
         y[i] = ggml_gelu_erf_f32(x[i]);
     }
 }
-
 inline static void ggml_vec_mul_gelu_f32(const int n, float * z, const float * x, const float * y) {
     int i = 0;
 #if defined(__AVX512F__) && defined(__AVX512DQ__)
@@ -4515,11 +4875,35 @@ inline static void ggml_vec_mul_gelu_f32(const int n, float * z, const float * x
     for (; i + 15 < n; i += 16) {
         _mm512_storeu_ps(z + i, _mm512_mul_ps(ggml_v_gelu(_mm512_loadu_ps(x + i), c1, c2), _mm512_loadu_ps(y + i)));
     }
-#elif defined __AVX2__ && defined __FMA__
-    __m256 c1 = _mm256_set1_ps(GELU_COEF_A);
-    __m256 c2 = _mm256_set1_ps(2.f*SQRT_2_OVER_PI);
+#elif defined __AVX2__ && defined __FMA__ || __AVX__
+//    __m256 c1 = _mm256_set1_ps(GELU_COEF_A);
+//    __m256 c2 = _mm256_set1_ps(2.f*SQRT_2_OVER_PI);
+#ifdef GGML_LOOP32
+for (; i + 31 < n; i += 32) {
+    __m256 x0 = _mm256_loadu_ps(x + i);
+    __m256 x1 = _mm256_loadu_ps(x + i + 8);
+    __m256 x2 = _mm256_loadu_ps(x + i + 16);
+    __m256 x3 = _mm256_loadu_ps(x + i + 24);
+    __m256 y0 = _mm256_loadu_ps(y + i);
+    __m256 y1 = _mm256_loadu_ps(y + i + 8);
+    __m256 y2 = _mm256_loadu_ps(y + i + 16);
+    __m256 y3 = _mm256_loadu_ps(y + i + 24);
+//    __m256 z0 = _mm256_mul_ps(ggml_v_gelu(x0, c1, c2), y0);
+//    __m256 z1 = _mm256_mul_ps(ggml_v_gelu(x1, c1, c2), y1);
+//    __m256 z2 = _mm256_mul_ps(ggml_v_gelu(x2, c1, c2), y2);
+//    __m256 z3 = _mm256_mul_ps(ggml_v_gelu(x3, c1, c2), y3);
+    __m256 z0 = _mm256_mul_ps(ggml_v_gelus(x0), y0);
+    __m256 z1 = _mm256_mul_ps(ggml_v_gelus(x1), y1);
+    __m256 z2 = _mm256_mul_ps(ggml_v_gelus(x2), y2);
+    __m256 z3 = _mm256_mul_ps(ggml_v_gelus(x3), y3);
+    _mm256_storeu_ps(z + i,      z0);
+    _mm256_storeu_ps(z + i + 8,  z1);
+    _mm256_storeu_ps(z + i + 16, z2);
+    _mm256_storeu_ps(z + i + 24, z3);
+}
+#endif
     for (; i + 7 < n; i += 8) {
-        _mm256_storeu_ps(z + i, _mm256_mul_ps(ggml_v_gelu(_mm256_loadu_ps(x + i), c1, c2), _mm256_loadu_ps(y + i)));
+        _mm256_storeu_ps(z + i, _mm256_mul_ps(ggml_v_gelus(_mm256_loadu_ps(x + i)), _mm256_loadu_ps(y + i)));
     }
 #endif
 #ifdef GGML_GELU_FP16
@@ -4562,7 +4946,37 @@ static ggml_float ggml_vec_soft_max_f32(const int n, float * y, const float * x,
         //sum += (ggml_float)_mm512_reduce_add_ps(val);
     }
     sum = (ggml_float)_mm512_reduce_add_ps(vsum);
-#elif defined(__AVX2__) && defined(__FMA__)
+#elif defined(__AVX2__) && defined(__FMA__) || __AVX__
+#ifdef GGML_LOOP32
+const __m256 vmax = _mm256_set1_ps(max);
+__m256 sum0 = _mm256_setzero_ps();
+__m256 sum1 = _mm256_setzero_ps();
+__m256 sum2 = _mm256_setzero_ps();
+__m256 sum3 = _mm256_setzero_ps();
+for (; i + 31 < n; i += 32) {
+    __m256 e0 = ggml_v_expf(_mm256_sub_ps(_mm256_loadu_ps(x + i), vmax));
+    __m256 e1 = ggml_v_expf(_mm256_sub_ps(_mm256_loadu_ps(x + i + 8), vmax));
+    __m256 e2 = ggml_v_expf(_mm256_sub_ps(_mm256_loadu_ps(x + i + 16), vmax));
+    __m256 e3 = ggml_v_expf(_mm256_sub_ps(_mm256_loadu_ps(x + i + 24), vmax));
+    _mm256_storeu_ps(y + i,      e0);
+    _mm256_storeu_ps(y + i + 8,  e1);
+    _mm256_storeu_ps(y + i + 16, e2);
+    _mm256_storeu_ps(y + i + 24, e3);
+    sum0 = _mm256_add_ps(sum0, e0);
+    sum1 = _mm256_add_ps(sum1, e1);
+    sum2 = _mm256_add_ps(sum2, e2);
+    sum3 = _mm256_add_ps(sum3, e3);
+}
+__m256 vsum = _mm256_add_ps(
+    _mm256_add_ps(sum0, sum1),
+    _mm256_add_ps(sum2, sum3));
+__m128 s = _mm_add_ps(
+    _mm256_castps256_ps128(vsum),
+    _mm256_extractf128_ps(vsum, 1));
+s = _mm_add_ps(s, _mm_movehl_ps(s, s));
+s = _mm_add_ss(s, _mm_movehdup_ps(s));
+sum += _mm_cvtss_f32(s);
+#endif
     for (; i + 7 < n; i += 8) {
         __m256 val = ggml_v_expf(_mm256_sub_ps(_mm256_loadu_ps(x + i),
                                                _mm256_set1_ps(max)));

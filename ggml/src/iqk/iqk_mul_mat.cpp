@@ -1410,7 +1410,28 @@ void MulMat::relu(int n, const float * x, float * y) {
     for (int j = 0; j < n; ++j) y[j] = x[j] > 0 ? x[j] : 0;
 }
 #endif
-#if defined(__AVX__) && !defined(__AVX2__)
+#if defined(__AVX2__) && defined(__FMA__)
+
+void MulMat::gelu(int n, const float * x, float * y) {
+    constexpr float GELU_COEF_A = 0.044715f;
+    constexpr float SQRT_2_OVER_PI  = 0.79788456080286535587989211986876f;
+    //GGML_ASSERT(n%8 == 0);
+    int i = 0;
+#if defined __AVX512F__ && defined __AVX512DQ__
+    {
+        __m512 c1 = _mm512_set1_ps(GELU_COEF_A);
+        __m512 c2 = _mm512_set1_ps(2.f*SQRT_2_OVER_PI);
+        for (; i + 15 < n; i += 16) _mm512_storeu_ps(y + i, v_gelu(_mm512_loadu_ps(x + i), c1, c2));
+    }
+#endif
+#if defined __AVX2__ && defined __FMA__
+    if (i + 7 < n) {
+        __m256 c1 = _mm256_set1_ps(GELU_COEF_A);
+        __m256 c2 = _mm256_set1_ps(2.f*SQRT_2_OVER_PI);
+        for (; i + 7 < n; i += 8) _mm256_storeu_ps(y + i, v_gelu(_mm256_loadu_ps(x + i), c1, c2));
+
+    }
+#elif defined(__AVX__)
 void MulMat::gelu(int n, const float *x, float *y) {
     constexpr float A = 0.044715f;
     constexpr float B = -1.5957691216057307f;
@@ -1521,28 +1542,6 @@ void MulMat::silu(int n, const float *x, float *y) {
 void MulMat::relu(int n, const float * x, float * y) {
     for (int j = 0; j < n; ++j) y[j] = x[j] > 0 ? x[j] : 0;
 }
-#endif
-#if defined(__AVX2__) && defined(__FMA__)
-
-void MulMat::gelu(int n, const float * x, float * y) {
-    constexpr float GELU_COEF_A = 0.044715f;
-    constexpr float SQRT_2_OVER_PI  = 0.79788456080286535587989211986876f;
-    //GGML_ASSERT(n%8 == 0);
-    int i = 0;
-#if defined __AVX512F__ && defined __AVX512DQ__
-    {
-        __m512 c1 = _mm512_set1_ps(GELU_COEF_A);
-        __m512 c2 = _mm512_set1_ps(2.f*SQRT_2_OVER_PI);
-        for (; i + 15 < n; i += 16) _mm512_storeu_ps(y + i, v_gelu(_mm512_loadu_ps(x + i), c1, c2));
-    }
-#endif
-#if defined __AVX2__ && defined __FMA__
-    if (i + 7 < n) {
-        __m256 c1 = _mm256_set1_ps(GELU_COEF_A);
-        __m256 c2 = _mm256_set1_ps(2.f*SQRT_2_OVER_PI);
-        for (; i + 7 < n; i += 8) _mm256_storeu_ps(y + i, v_gelu(_mm256_loadu_ps(x + i), c1, c2));
-
-    }
 #endif
     for (; i < n; ++i) y[i] = 0.5f*x[i]*(1.0f + tanhf(SQRT_2_OVER_PI*x[i]*(1.0f + GELU_COEF_A*x[i]*x[i])));
 }
@@ -2871,11 +2870,6 @@ bool iqk_indexer_topk(struct ggml_tensor * dst, void * work_buffer, barrier_t ba
 #else  // IQK_IMPLEMENT
 
 #include "ggml-impl.h"
-#include "iqk_mul_mat.h"
-#if defined __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wsuggest-attribute=noreturn"
-#endif
 
 extern "C" IQK_API bool iqk_mul_mat(long, long, long, int, const void *, long, int, const void *, long, float *, long, int, int) {
     GGML_ABORT("Unsupported CPU. You may need to manually set compilation flags\n");
@@ -2932,5 +2926,4 @@ extern "C" IQK_API void iqk_topk_moe(int, int, int, const float *, float *, int3
 
 #if defined __GNUC__
 #pragma GCC diagnostic pop
-#endif
 #endif
