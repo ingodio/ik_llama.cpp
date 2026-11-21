@@ -281,6 +281,48 @@ static inline __m256 v_clamp_max(__m256 x, __m256 max) {
 }
 #endif
 #if defined(__AVX__) && !defined(__AVX2__)
+static inline __m256 v_expf(__m256 x)
+{
+    const __m256 one = _mm256_set1_ps(1.0f);
+    x = _mm256_min_ps(x, _mm256_set1_ps(88.0f));
+    x = _mm256_max_ps(x, _mm256_set1_ps(-87.0f));
+    const __m256 log2e = _mm256_set1_ps(1.44269504088896341f);
+    __m256 fx = _mm256_add_ps(
+        _mm256_mul_ps(x, log2e),
+        _mm256_set1_ps(12582912.0f));
+    fx = _mm256_sub_ps(fx, _mm256_set1_ps(12582912.0f));
+    __m256 r = _mm256_sub_ps(
+        x, _mm256_mul_ps(fx, _mm256_set1_ps(0.693359375f)));
+//    r = _mm256_sub_ps(r, _mm256_mul_ps(fx, _mm256_set1_ps(-0.00021219444005f)));
+    const __m256 c1 = _mm256_set1_ps(1.9875691500e-4f);
+    const __m256 c2 = _mm256_set1_ps(1.3981999507e-3f);
+    const __m256 c3 = _mm256_set1_ps(8.3334519073e-3f);
+    const __m256 c4 = _mm256_set1_ps(4.1665795894e-2f);
+    const __m256 c5 = _mm256_set1_ps(1.6666665459e-1f);
+    const __m256 c6 = _mm256_set1_ps(5.0000001201e-1f);
+    const __m256 r2 = _mm256_mul_ps(r, r);
+    const __m256 r4 = _mm256_mul_ps(r2, r2);
+    const __m256 p0 = _mm256_add_ps(c1, _mm256_mul_ps(c2, r));
+    const __m256 p1 = _mm256_add_ps(c3, _mm256_mul_ps(c4, r));
+    const __m256 p2 = _mm256_add_ps(c5, _mm256_mul_ps(c6, r));
+    const __m256 p01 = _mm256_add_ps(p0, _mm256_mul_ps(p1, r2));
+    const __m256 p = _mm256_add_ps(p01, _mm256_mul_ps(p2, r4));
+    const __m256 er = _mm256_add_ps(
+        one, _mm256_add_ps(r, _mm256_mul_ps(r2, p)));
+    // Sandy Bridge: AVX has no 256-bit integer arithmetic.
+    // Construct the exponent scale using two SSE integer halves.
+    __m128i n0 = _mm_add_epi32(
+        _mm_cvttps_epi32(_mm256_castps256_ps128(fx)),
+        _mm_set1_epi32(127));
+    __m128i n1 = _mm_add_epi32(
+        _mm_cvttps_epi32(_mm256_extractf128_ps(fx, 1)),
+        _mm_set1_epi32(127));
+    n0 = _mm_slli_epi32(n0, 23);
+    n1 = _mm_slli_epi32(n1, 23);
+    __m256 scale = _mm256_castps128_ps256(_mm_castsi128_ps(n0));
+    scale = _mm256_insertf128_ps(scale, _mm_castsi128_ps(n1), 1);
+    return _mm256_mul_ps(er, scale);
+}
 static inline __m128 v_expf(__m128 x)
 {
     const __m128 one = _mm_set1_ps(1.0f);
@@ -325,6 +367,46 @@ static inline __m128 v_tanh(__m128 x) {
     const __m128 den = _mm_add_ps(
         c27, _mm_mul_ps(c9, x2));
     return _mm_mul_ps(num, _mm_rcp_ps(den));
+}
+static inline __m256 v_tanh(__m256 x)
+{
+    const __m256 zero = _mm256_setzero_ps();
+    const __m256 one  = _mm256_set1_ps(1.0f);
+    const __m256 limit = _mm256_set1_ps(5.0f);
+    // Clamp input to [-5, 5].
+    x = _mm256_max_ps(_mm256_sub_ps(zero, limit),
+                      _mm256_min_ps(x, limit));
+    const __m256 x2 = _mm256_mul_ps(x, x);
+    // Numerator:
+    // 135135 + 17325*x2 + 378*x2^2 + x2^3
+    __m256 num = _mm256_add_ps(
+        _mm256_mul_ps(x2, _mm256_set1_ps(1.0f)),
+        _mm256_set1_ps(378.0f));
+    num = _mm256_add_ps(
+        _mm256_mul_ps(num, x2),
+        _mm256_set1_ps(17325.0f));
+    num = _mm256_add_ps(
+        _mm256_mul_ps(num, x2),
+        _mm256_set1_ps(135135.0f));
+    // Denominator:
+    // 135135 + 62370*x2 + 3150*x2^2 + 28*x2^3
+    __m256 den = _mm256_add_ps(
+        _mm256_mul_ps(x2, _mm256_set1_ps(28.0f)),
+        _mm256_set1_ps(3150.0f));
+    den = _mm256_add_ps(
+        _mm256_mul_ps(den, x2),
+        _mm256_set1_ps(62370.0f));
+    den = _mm256_add_ps(
+        _mm256_mul_ps(den, x2),
+        _mm256_set1_ps(135135.0f));
+    __m256 r = _mm256_rcp_ps(den);
+    // Reciprocal with Newton-Raphson refinement.
+//    r = _mm256_mul_ps(r,_mm256_sub_ps(_mm256_set1_ps(2.0f),_mm256_mul_ps(den, r)));
+    __m256 y = _mm256_mul_ps(
+        _mm256_mul_ps(x, num), r);
+    y = _mm256_max_ps(_mm256_sub_ps(zero, one),
+                      _mm256_min_ps(y, one));
+    return y;
 }
 #endif // AVX
 #endif // IQK_IMPLEMENT

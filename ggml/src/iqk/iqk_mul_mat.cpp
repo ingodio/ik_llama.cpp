@@ -9,7 +9,6 @@
 
 #include "iqk_config.h"
 
-#if defined IQK_IMPLEMENT
 
 #include <cstring>
 #include <cfloat>
@@ -2866,64 +2865,3 @@ bool iqk_indexer_topk(struct ggml_tensor * dst, void * work_buffer, barrier_t ba
 
     return true;
 }
-
-#else  // IQK_IMPLEMENT
-
-#include "ggml-impl.h"
-
-extern "C" IQK_API bool iqk_mul_mat(long, long, long, int, const void *, long, int, const void *, long, float *, long, int, int) {
-    GGML_ABORT("Unsupported CPU. You may need to manually set compilation flags\n");
-    return false;
-}
-
-extern "C" IQK_API bool iqk_mul_mat_4d(long /*Nx*/, long /*Ny*/, long /*ne00*/,
-        long /*ne02*/, long /*ne03*/, long /*ne12*/, long /*ne13*/,
-        long /*nb02*/, long /*nb03*/, long /*nb12*/, long /*nb13*/, long /*nb2*/, long /*nb3*/,
-        int /*typeA*/, const void * /*A*/, long /*strideA*/,
-        int /*typeB*/, const void * /*B*/, long /*strideB*/,
-        float * /*C*/, long /*stride_C*/, int /*ith*/, int /*nth*/) {
-    GGML_ABORT("Unsupported CPU. You may need to manually set compilation flags\n");
-    return false;
-}
-
-extern "C" IQK_API bool iqk_mul_mat_moe(long, long, long, int, int, const void *, long, int, const void *, long, float *, long, long,
-        const void *, int, int) {
-    GGML_ABORT("Unsupported CPU. You may need to manually set compilation flags\n");
-    return false;
-}
-
-extern "C" IQK_API bool iqk_moe_fused_up_gate(long /*Nx*/, long /*Ny*/, long /*ne00*/, int /*ne11*/, int /*unary_op*/,
-        int /*typeA*/, const void * /*Aup*/, const void * /*Agate*/, long /*strideA*/,
-        int /*typeB*/, const void * /*B*/, long /*strideB*/,
-        const char * /*up_b*/, const char * /*gate_b*/,
-        float * /*C*/, long /*nb1*/, long /*nb2*/, const void * /*vrow_mapping*/, float /*limit*/, int /*ith*/, int /*nth*/) {
-    GGML_ABORT("Unsupported CPU. You may need to manually set compilation flags\n");
-    return false;
-}
-
-bool iqk_fused_delta_net(int, int, int, int, int, int,
-        size_t, size_t, size_t,
-        const float *, const float *, const float *, const float *, const float *,
-        const float *, float *, float *, float *, int, int, int) {
-    return false;
-}
-
-bool iqk_indexer_topk(struct ggml_tensor *, void *, barrier_t, void *, int, int) {
-    return false;
-}
-
-size_t iqk_idx_topk_work_buffer_size(const struct ggml_tensor *, int) {
-    return 0;
-}
-
-extern "C" IQK_API size_t iqk_fa_work_buffer_size(const struct ggml_tensor *, int) {
-    return 0;
-}
-
-extern "C" IQK_API void iqk_topk_moe(int, int, int, const float *, float *, int32_t *, int, int) {
-    GGML_ABORT("Unsupported CPU. You may need to manually set compilation flags\n");
-}
-
-#if defined __GNUC__
-#pragma GCC diagnostic pop
-#endif

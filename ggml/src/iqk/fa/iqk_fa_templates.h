@@ -131,8 +131,10 @@ struct F16 {
     static inline Data fmadd_lane1(Data prev, Data v1, Data v2) { return _mm256_fmadd_ps(v1, _mm256_shuffle_ps(v2, v2, 0x55), prev); }
     static inline Data fmadd_lane2(Data prev, Data v1, Data v2) { return _mm256_fmadd_ps(v1, _mm256_shuffle_ps(v2, v2, 0xaa), prev); }
     static inline Data fmadd_lane3(Data prev, Data v1, Data v2) { return _mm256_fmadd_ps(v1, _mm256_shuffle_ps(v2, v2, 0xff), prev); }
-cpp
 #elif defined __AVX__
+static inline __m256 FMADD_PS(__m256 a, __m256 b, __m256 c) {
+    return _mm256_add_ps(_mm256_mul_ps(a, b), c);
+}
     using Data = __m256;
     constexpr static int block_size = 8;
     constexpr static int num_registers = 16;
@@ -191,6 +193,10 @@ cpp
         vs[2] = _mm256_shuffle_ps(v, v, 0xaa);
         vs[3] = _mm256_shuffle_ps(v, v, 0xff);
     }
+    static inline Data fmadd_lane0(Data prev, Data v1, Data v2) { return FMADD_PS(v1, _mm256_shuffle_ps(v2, v2, 0x00), prev); }
+    static inline Data fmadd_lane1(Data prev, Data v1, Data v2) { return FMADD_PS(v1, _mm256_shuffle_ps(v2, v2, 0x55), prev); }
+    static inline Data fmadd_lane2(Data prev, Data v1, Data v2) { return FMADD_PS(v1, _mm256_shuffle_ps(v2, v2, 0xaa), prev); }
+    static inline Data fmadd_lane3(Data prev, Data v1, Data v2) { return FMADD_PS(v1, _mm256_shuffle_ps(v2, v2, 0xff), prev); }
 #else
     using Data = float16x8_t;
     constexpr static int block_size = 8;
@@ -692,7 +698,6 @@ v2 = _mm256_mul_ps(vd, _mm256_insertf128_ps(_mm256_castps128_ps256(f2_lo), f2_hi
         v1 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(vget_low_s8(q))));
         v2 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(vget_high_s8(q))));
 #endif
-#endif
     }
 
 #ifdef __AVX2__
@@ -972,43 +977,8 @@ struct FlashMS {
         S[j] += F16::reduce_add<k_step>(vk);
     }
 #endif
-#if defined __AVX512F__
-    static inline __m512 apply_mask(int l, const char * mask, __m512 val, __m512 vinf) {
-        auto m256 = _mm256_loadu_si256((const __m256i *)mask+l);
-        m256 = _mm256_cmpeq_epi16(m256, _mm256_setzero_si256());
-        auto m512 = _mm512_cvtepi16_epi32(m256);
-        auto mf = _mm512_castsi512_ps(_mm512_or_si512(m512, _mm512_slli_epi32(m512, 16)));
-        return _mm512_or_ps(_mm512_and_ps(mf, val), _mm512_andnot_ps(mf, vinf));
-    }
-#endif
-    inline float load_and_scale(int j, F16::Data * vk) {
-        if (softcap <= 0.0f) {
-            for (int l = 0; l < k_step/F16::block_size; ++l) vk[l] = F16::mul(vscale, F16::load(cache + k_step*j + F16::block_size*l));
-        } else {
-            auto v_softcap = F16::set1(softcap);
-            for (int l = 0; l < k_step/F16::block_size; ++l) {
-                auto val = F16::load(cache + k_step*j + F16::block_size*l);
-                vk[l] = F16::mul(v_softcap, v_tanh(F16::mul(vscale, val)));
-            }
-        }
-        return F16::reduce_max<k_step>(vk);
-    }
-#if __AVX__
-  #if !defined __AVX2__
-    static inline __m256 apply_mask(int l, const char * mask, __m256 val, [[maybe_unused]] __m256 vinf) {
-    float tmp[8];
-    const ggml_fp16_t * src = (const ggml_fp16_t *)mask + l;
-    for (int j = 0; j < 8; ++j) {tmp[j] = GGML_FP16_TO_FP32(src[j]);}
-    return _mm256_add_ps(val, _mm256_loadu_ps(tmp));
-  #elif __AVX2__
-        return _mm256_add_ps(val,_mm256_cvtph_ps(_mm_loadu_si128((const __m128i *)mask+l)));
-        //auto m128 = _mm_loadu_si128((const __m128i *)mask+l);
-        //m128 = _mm_cmpeq_epi16(m128, _mm_setzero_si128());
-        //auto m256 = _mm256_cvtepi16_epi32(m128);
-        //auto mf = _mm256_castsi256_ps(_mm256_or_si256(m256, _mm256_slli_epi32(m256, 16)));
-        //return _mm256_or_ps(_mm256_and_ps(mf, val), _mm256_andnot_ps(mf, vinf));
-    }
-#elif defined __aarch64__
+
+#ifdef __aarch64__
     inline float load_and_scale(int j, float32x4_t * vk) {
         float32x4_t vmax = vdupq_n_f32(-INFINITY);
         // Something goes wrong when storing and manipulating K*Q as fp16.
@@ -1079,6 +1049,35 @@ struct FlashMS {
         }
         return vmaxvq_f32(vmax);
     }
+#else
+    inline float load_and_scale(int j, F16::Data * vk) {
+        if (softcap <= 0.0f) {
+            for (int l = 0; l < k_step/F16::block_size; ++l) vk[l] = F16::mul(vscale, F16::load(cache + k_step*j + F16::block_size*l));
+        } else {
+            auto v_softcap = F16::set1(softcap);
+            for (int l = 0; l < k_step/F16::block_size; ++l) {
+                auto val = F16::load(cache + k_step*j + F16::block_size*l);
+                vk[l] = F16::mul(v_softcap, v_tanh(F16::mul(vscale, val)));
+            }
+        }
+        return F16::reduce_max<k_step>(vk);
+    }
+    static inline __m256 apply_mask(int l, const char * mask, __m256 val, [[maybe_unused]] __m256 vinf) {
+        return _mm256_add_ps(val, _mm256_cvtph_ps(_mm_loadu_si128((const __m128i *)mask+l)));
+        //auto m128 = _mm_loadu_si128((const __m128i *)mask+l);
+        //m128 = _mm_cmpeq_epi16(m128, _mm_setzero_si128());
+        //auto m256 = _mm256_cvtepi16_epi32(m128);
+        //auto mf = _mm256_castsi256_ps(_mm256_or_si256(m256, _mm256_slli_epi32(m256, 16)));
+        //return _mm256_or_ps(_mm256_and_ps(mf, val), _mm256_andnot_ps(mf, vinf));
+    }
+#ifdef __AVX512F__
+    static inline __m512 apply_mask(int l, const char * mask, __m512 val, __m512 vinf) {
+        auto m256 = _mm256_loadu_si256((const __m256i *)mask+l);
+        m256 = _mm256_cmpeq_epi16(m256, _mm256_setzero_si256());
+        auto m512 = _mm512_cvtepi16_epi32(m256);
+        auto mf = _mm512_castsi512_ps(_mm512_or_si512(m512, _mm512_slli_epi32(m512, 16)));
+        return _mm512_or_ps(_mm512_and_ps(mf, val), _mm512_andnot_ps(mf, vinf));
+    }
 #endif
     inline float load_apply_mask_and_scale(int j, F16::Data * vk, const char * mask) {
 #ifdef HAVE_FANCY_SIMD
@@ -1110,6 +1109,7 @@ struct FlashMS {
 #endif
         return F16::reduce_max<k_step>(vk);
     }
+#endif
 
 #ifdef __aarch64__
     inline void update_M_S(int j, float32x4_t * vk) {
@@ -1143,7 +1143,7 @@ struct FlashMS {
     const float  softcap;
     const ggml_half h_inf;
 
-}
+};
 
 template <int D, int q_step, int k_step>
 struct FlashQKV {
@@ -1244,7 +1244,6 @@ struct FlashQKV {
             }
             return;
         }
-}
 #endif
         F16::Data v[8];
 #ifdef __AVX2__
@@ -1261,12 +1260,6 @@ struct FlashQKV {
                     auto s1 = F16::load(R + F16::block_size*(i+0));
                     auto s2 = F16::load(R + F16::block_size*(i+1));
 #ifdef __AVX2__
-                    F16::set4(fms.cache + k_step*j + l, vs);
-                    for (int k = 0; k < 4; ++k) {
-                        s1 = F16::fmadd(s1, v[k+0], vs[k]);
-                        s2 = F16::fmadd(s2, v[k+4], vs[k]);
-                    }
-#ifdef __AVX__
                     F16::set4(fms.cache + k_step*j + l, vs);
                     for (int k = 0; k < 4; ++k) {
                         s1 = F16::fmadd(s1, v[k+0], vs[k]);
@@ -1442,13 +1435,13 @@ struct FlashQKfp32 {
     template <typename KHelper, typename q_float>
     static inline void multiply_mask_kq(const KHelper& kh, int stride_q, int stride_m, const q_float * q, const char * mask,
             FlashMS<q_step, k_step>& fms) {
-#ifdef __AVX2__
+#ifdef __AVX__
         constexpr int nrc_k = 8;
         static_assert(k_step%nrc_k == 0);
 #endif
         DataInfo info{fms.cache, (const char *)q, k_step, stride_q*sizeof(q_float), 0, 1, nullptr};
         iqk_gemm_default_floats(D, q_step, kh.block, kh.stride, info, k_step);
-#ifdef __AVX2__
+#ifdef __AVX__
         F16::Data vk[k_step/F16::block_size];
 #else
         float32x4_t vk[k_step/4];
@@ -1461,13 +1454,13 @@ struct FlashQKfp32 {
     template <typename KHelper, typename q_float>
     static inline void multiply_mask_kq(int nq, const KHelper& kh, int stride_q, int stride_m, const q_float * q, const char * mask,
             FlashMS<q_step, k_step>& fms) {
-#ifdef __AVX2__
+#ifdef __AVX__
         constexpr int nrc_k = 8;
         static_assert(k_step%nrc_k == 0);
 #endif
         DataInfo info{fms.cache, (const char *)q, k_step, stride_q*sizeof(q_float), 0, 1, nullptr};
         iqk_gemm_default_floats(D, nq, kh.block, kh.stride, info, k_step);
-#ifdef __AVX2__
+#ifdef __AVX__
         F16::Data vk[k_step/F16::block_size];
 #else
         float32x4_t vk[k_step/4];
@@ -2389,10 +2382,12 @@ inline bool iqk_flash_helper_T(ggml_type type_k, ggml_type type_v,
 
     bool result = false;
     switch (type_k) {
+#if !defined __F16C__
         case GGML_TYPE_F16: {
             HelperF16 kh(k, stride_k);
             result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
         } break;
+#endif
         case GGML_TYPE_Q8_0: {
             HelperQ80 kh(k, stride_k);
             result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
