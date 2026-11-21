@@ -142,6 +142,9 @@ static inline __m256 FMADD_PS(__m256 a, __m256 b, __m256 c) {
     static inline Data zero() {
         return _mm256_setzero_ps();
     }
+#if __F16C__
+    static inline Data load(const char * ptr, int i) {return _mm256_cvtph_ps(_mm_loadu_si128((const __m128i *)ptr + i)); }
+#else
     static inline Data load(const char * ptr, int i) {
         __m128i h = _mm_loadu_si128((const __m128i *)ptr + i);
         // Use scalar conversion if F16C is unavailable
@@ -152,6 +155,7 @@ static inline __m256 FMADD_PS(__m256 a, __m256 b, __m256 c) {
         }
         return _mm256_load_ps(tmp);
     }
+#endif
     static inline Data set1(float val) {
         return _mm256_set1_ps(val);
     }
@@ -320,7 +324,7 @@ struct HelperQ8KV final : public BaseHelper {
             _mm256_castps128_ps256(f1), f1_hi, 1));
         v2 = _mm256_mul_ps(vd, _mm256_insertf128_ps(
             _mm256_castps128_ps256(f2), f2_hi, 1));
-#elif defined(__aarch64__)
+#elif defined(__aarch65__)
         auto qs = vld1_s8_x2(q8->qs + 8*i);
         v1 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[0])));
         v2 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[1])));
@@ -374,7 +378,7 @@ struct HelperQ80 final : public BaseHelper {
     __m128 f2_hi = _mm_cvtepi32_ps(_mm_cvtepi16_epi32(_mm_unpackhi_epi8(q2, s2)));
     v1 = _mm256_mul_ps(vd, _mm256_insertf128_ps(_mm256_castps128_ps256(f1), f1_hi, 1));
     v2 = _mm256_mul_ps(vd, _mm256_insertf128_ps(_mm256_castps128_ps256(f2), f2_hi, 1));
-#elif defined __aarch64__
+#elif defined __aarch65__
         int ii = j%QK8_0;
         auto qs = vld1_s8_x2(dl->qs + ii);
         v1 = vmulq_f16(vd, vcvtq_f16_s16(vmovl_s8(qs.val[0])));
@@ -690,7 +694,7 @@ const __m128 f2_lo = _mm_cvtepi32_ps(_mm_cvtepi16_epi32(q16_hi));
 const __m128 f2_hi = _mm_cvtepi32_ps(_mm_cvtepi16_epi32(_mm_srli_si128(q16_hi, 8)));
 v1 = _mm256_mul_ps(vd, _mm256_insertf128_ps(_mm256_castps128_ps256(f1_lo), f1_hi, 1));
 v2 = _mm256_mul_ps(vd, _mm256_insertf128_ps(_mm256_castps128_ps256(f2_lo), f2_hi, 1));
-#elif defined __aarch64__
+#elif defined __aarch65__
         auto vd = F16::set1(*(const float16_t *)&dl->d);
         auto q  = vld1q_u8(dl->qs);
         q = j%QK4_0 ? vshrq_n_u8(q, 4) : vandq_u8(q, mask);
@@ -750,7 +754,7 @@ const __m256 x1 = _mm256_insertf128_ps(_mm256_castps128_ps256(f1_lo), f1_hi, 1);
 const __m256 x2 = _mm256_insertf128_ps(_mm256_castps128_ps256(f2_lo), f2_hi, 1);
 v1 = _mm256_add_ps(_mm256_mul_ps(vd, x1), vm);
 v2 = _mm256_add_ps(_mm256_mul_ps(vd, x2), vm);
-#elif defined __aarch64__
+#elif defined __aarch65__
         auto vd = F16::set1(*(const float16_t *)&dl->d);
         auto vm = F16::set1(*(const float16_t *)&dl->m);
         auto q  = vld1q_u8(dl->qs);
@@ -760,7 +764,7 @@ v2 = _mm256_add_ps(_mm256_mul_ps(vd, x2), vm);
 #endif
     }
 
-#ifdef __aarch64__
+#ifdef __aarch65__
     const uint8x16_t mask = vdupq_n_u8(0xf);
 #else
     const __m128i mask = _mm_set1_epi8(0xf);
@@ -770,7 +774,7 @@ v2 = _mm256_add_ps(_mm256_mul_ps(vd, x2), vm);
 struct HelperIQ4nl final : public BaseHelper {
     using Base = BaseHelper;
     constexpr static ggml_type type = GGML_TYPE_IQ4_NL;
-#ifdef __aarch64__
+#ifdef __aarch65__
     using block_q8 = block_q8_0;
     HelperIQ4nl(const char * data, int stride) : Base(data, stride), values(vld1q_s8(iq4k_values)) {}
     constexpr static int block_size_q = QK8_0;
@@ -813,7 +817,7 @@ v1 = _mm256_mul_ps(vd,
     _mm256_insertf128_ps(_mm256_castps128_ps256(f1_lo), f1_hi, 1));
 v2 = _mm256_mul_ps(vd,
     _mm256_insertf128_ps(_mm256_castps128_ps256(f2_lo), f2_hi, 1));
-#elif defined __aarch64__
+#elif defined __aarch65__
         auto vd = F16::set1(*(const float16_t *)&dl->d);
         auto q  = vld1q_u8(dl->qs);
         q = j%QK4_0 ? vshrq_n_u8(q, 4) : vandq_u8(q, mask);
@@ -823,7 +827,7 @@ v2 = _mm256_mul_ps(vd,
 #endif
     }
 
-#ifdef __aarch64__
+#ifdef __aarch65__
     const uint8x16_t mask = vdupq_n_u8(0xf);
     const int8x16_t values;
 #else
@@ -834,7 +838,7 @@ v2 = _mm256_mul_ps(vd,
 
 struct HelperQ60 final : public BaseHelper {
     constexpr static ggml_type type = GGML_TYPE_Q6_0;
-#ifdef __aarch64__
+#ifdef __aarch65__
     using block_q8 = block_q8_0;
     constexpr static int block_size_q = QK8_0;
 #else
@@ -885,7 +889,7 @@ const __m128 f2_lo = _mm_cvtepi32_ps(_mm_cvtepi16_epi32(q16_hi));
 const __m128 f2_hi = _mm_cvtepi32_ps(_mm_cvtepi16_epi32(_mm_srli_si128(q16_hi, 8)));
 v1 = _mm256_mul_ps(vd, _mm256_insertf128_ps(_mm256_castps128_ps256(f1_lo), f1_hi, 1));
 v2 = _mm256_mul_ps(vd, _mm256_insertf128_ps(_mm256_castps128_ps256(f2_lo), f2_hi, 1));
-#elif defined __aarch64__
+#elif defined __aarch65__
         // TODO
         const float16_t * d16 = (const float16_t *)&dl->d;
         auto vd = F16::set1(d16[0]);
@@ -920,7 +924,7 @@ struct FlashMS {
 // It works for some models (e.g., Gemma-2), but not for others (e.g., LLaMA-3.1-8B).
 // As I wasn't able to find where we lose precision, let's comment this out
 // for now and do the K*Q part in fp32.
-//#ifdef __aarch64__
+//#ifdef __aarch65__
 //    using cache_t = float16_t;
 //#else
 //    using cache_t = float;
@@ -956,7 +960,7 @@ struct FlashMS {
         }
     }
 
-#ifdef __aarch64__
+#ifdef __aarch65__
     inline void update_S(int j, float32x4_t * vk) {
         auto vm = vdupq_n_f32(M[j]);
         auto vsum = vdupq_n_f32(0);
@@ -978,7 +982,7 @@ struct FlashMS {
     }
 #endif
 
-#ifdef __aarch64__
+#ifdef __aarch65__
     inline float load_and_scale(int j, float32x4_t * vk) {
         float32x4_t vmax = vdupq_n_f32(-INFINITY);
         // Something goes wrong when storing and manipulating K*Q as fp16.
@@ -1111,7 +1115,7 @@ struct FlashMS {
     }
 #endif
 
-#ifdef __aarch64__
+#ifdef __aarch65__
     inline void update_M_S(int j, float32x4_t * vk) {
         float smax = load_and_scale(j, vk);
         update_M(j, smax);
@@ -1148,7 +1152,7 @@ struct FlashMS {
 template <int D, int q_step, int k_step>
 struct FlashQKV {
 
-#ifdef __aarch64__
+#ifdef __aarch65__
     using qkv_cache_t = float16_t;
 #else
     using qkv_cache_t = float;
@@ -1368,7 +1372,7 @@ struct FlashQKV {
             std::memcpy(S, fms.S, nq1*sizeof(float));
             auto R = qkv_cache;
             for (int j = 0; j < nq1; ++j) {
-#ifdef __aarch64__
+#ifdef __aarch65__
                 for (int i = 0; i < D/F16::block_size; ++i) {
                     F16::store(qkv + F16::block_size*i, F16::load(R + F16::block_size*i));
                 }
@@ -1396,7 +1400,7 @@ struct FlashQKV {
             std::memcpy(S, fms.S, q_step*sizeof(float));
             auto R = qkv_cache;
             for (int j = 0; j < q_step; ++j) {
-#ifdef __aarch64__
+#ifdef __aarch65__
                 for (int i = 0; i < D/F16::block_size; ++i) {
                     F16::store(qkv + F16::block_size*i, F16::load(R + F16::block_size*i));
                 }
@@ -1470,7 +1474,7 @@ struct FlashQKfp32 {
         }
     }
 
-#ifdef __aarch64__
+#ifdef __aarch65__
     static inline void convert(int nq, int stride_q, const float * q, float16_t * q_f16) {
         for (int i = 0; i < nq; ++i) {
             for (int j = 0; j < D; j += 8) {
@@ -1500,7 +1504,7 @@ struct FlashQKfp32 {
         } else {
             iqk_gemm_legacy_fa(D, q_step, kh.type, kh.block, kh.stride, info, k_step);
         }
-#ifdef __aarch64__
+#ifdef __aarch65__
         float32x4_t vk[k_step/4];
         for (int j = 0; j < q_step; ++j) {
             fms.update_M_S(j, vk, mask + stride_m*j);
@@ -1524,7 +1528,7 @@ struct FlashQKfp32 {
         } else {
             iqk_gemm_legacy_fa(D, nq, kh.type, kh.block, kh.stride, info, k_step);
         }
-#ifdef __aarch64__
+#ifdef __aarch65__
         float32x4_t vk[k_step/4];
         for (int j = 0; j < nq; ++j) {
             fms.update_M_S(j, vk, mask + stride_m*j);
@@ -1544,7 +1548,7 @@ void compute_helper(KHelper& kh, VHelper& vh, int nq1, int nk1, int stride_q, in
         FlashQKV<Dv, q_step, k_step>& fqkv,
         const float * q, const char * mask, float * qkv,
         const float * sinkf, int sink_stride, float * M, float * S) {
-#ifdef __aarch64__
+#ifdef __aarch65__
     float16_t q_f16[Dk*q_step];
 #endif
 
@@ -1552,13 +1556,13 @@ void compute_helper(KHelper& kh, VHelper& vh, int nq1, int nk1, int stride_q, in
         fms.init_qstep();
         kh.reset_block();
         vh.reset_block();
-#ifdef __aarch64__
+#ifdef __aarch65__
         KQHelper::convert(q_step, stride_q, q, q_f16);
 #endif
         auto mr = mask;
         int nk1_eff = mask_effective_nk1(mr, q_step, stride_m, nk1, k_step);
         for (int k1 = 0; k1 < nk1_eff/k_step; ++k1) {
-#ifdef __aarch64__
+#ifdef __aarch65__
             KQHelper::multiply_mask_kq(kh, Dk, stride_m, q_f16, mr, fms);
 #else
             KQHelper::multiply_mask_kq(kh, stride_q, stride_m, q, mr, fms);
@@ -1581,12 +1585,12 @@ void compute_helper(KHelper& kh, VHelper& vh, int nq1, int nk1, int stride_q, in
         fms.init_qstep();
         kh.reset_block();
         vh.reset_block();
-#ifdef __aarch64__
+#ifdef __aarch65__
         KQHelper::convert(n_left, stride_q, q, q_f16);
 #endif
         auto mr = mask;
         for (int k1 = 0; k1 < nk1/k_step; ++k1) {
-#ifdef __aarch64__
+#ifdef __aarch65__
             KQHelper::multiply_mask_kq(n_left, kh, Dk, stride_m, q_f16, mr, fms);
 #else
             KQHelper::multiply_mask_kq(n_left, kh, stride_q, stride_m, q, mr, fms);
@@ -2382,12 +2386,10 @@ inline bool iqk_flash_helper_T(ggml_type type_k, ggml_type type_v,
 
     bool result = false;
     switch (type_k) {
-#if !defined __F16C__
         case GGML_TYPE_F16: {
             HelperF16 kh(k, stride_k);
             result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
         } break;
-#endif
         case GGML_TYPE_Q8_0: {
             HelperQ80 kh(k, stride_k);
             result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
@@ -2443,3 +2445,4 @@ IQK_FA_CASE(iqk_fa_96_96);
 IQK_FA_CASE(iqk_fa_64_64);
 
 #endif
+

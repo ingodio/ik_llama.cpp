@@ -281,6 +281,14 @@ static inline __m256 v_clamp_max(__m256 x, __m256 max) {
 }
 #endif
 #if defined(__AVX__) && !defined(__AVX2__)
+#if !defined(__FMA__)
+static inline __m256 FMADD_PS(__m256 a, __m256 b, __m256 c) {
+    return _mm256_add_ps(_mm256_mul_ps(a, b), c);
+#else
+static inline __m256 FMADD_PS(__m256 a, __m256 b, __m256 c){
+    return _mm256_fmadd_ps(a, b, c);
+}
+#endif
 static inline __m256 v_expf(__m256 x)
 {
     const __m256 one = _mm256_set1_ps(1.0f);
@@ -355,7 +363,7 @@ static inline __m128 v_expf(__m128 x)
 }
 static inline __m128 v_tanh(__m128 x) {
     const __m128 zero = _mm_setzero_ps();
-    const __m128 one  = _mm_set1_ps(1.0f);
+//    const __m128 one  = _mm_set1_ps(1.0f);
     const __m128 three = _mm_set1_ps(3.0f);
     const __m128 c27 = _mm_set1_ps(27.0f);
     const __m128 c9 = _mm_set1_ps(9.0f);
@@ -407,6 +415,19 @@ static inline __m256 v_tanh(__m256 x)
     y = _mm256_max_ps(_mm256_sub_ps(zero, one),
                       _mm256_min_ps(y, one));
     return y;
+}
+static inline __m256 v_situ(__m256 x, float beta) {
+    const __m256 b = _mm256_set1_ps(beta);
+    const __m256 inv_b = _mm256_set1_ps(1.0f/beta);
+    const __m256 one = _mm256_set1_ps(1.0f);
+    const __m256 soft = _mm256_mul_ps(b, v_tanh(_mm256_mul_ps(x, inv_b)));
+    const __m256 sig = _mm256_div_ps(one, _mm256_add_ps(one, v_expf(_mm256_sub_ps(_mm256_setzero_ps(), x))));
+    return _mm256_mul_ps(soft, sig);
+}
+static inline __m256 v_situ_up(__m256 x, float beta) {
+    const __m256 b = _mm256_set1_ps(beta);
+    const __m256 inv_b = _mm256_set1_ps(1.0f/beta);
+    return _mm256_mul_ps(b, v_tanh(_mm256_mul_ps(x, inv_b)));
 }
 #endif // AVX
 #endif // IQK_IMPLEMENT
