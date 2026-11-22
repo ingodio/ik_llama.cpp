@@ -8,7 +8,7 @@
 #define GGML_COMMON_IMPL_C
 #include "ggml-common.h"
 
-#ifdef __x86_64__
+#ifdef __AVX2__
 
 namespace {
 
@@ -3707,7 +3707,7 @@ struct DequantizerIQ4K final : public BaseDequantizer<block_iq4_k> {
 
     Q4bits bits;
     const int8x16_t values;
-    const uint8x16_t hshuff = vreinterpretq_u8_u32(uint32x4_t{0x09010800, 0x0b030a02, 0x0d050c04, 0x0f070e06});
+    const uint8x16_t hshuff = vreinterpretq_u8_u32((uint32x4_t{0x09010800, 0x0b030a02, 0x0d050c04, 0x0f070e06}));
 
 };
 
@@ -3754,7 +3754,7 @@ struct DequantizerIQ5K final : public BaseDequantizer<block_iq5_k> {
 
     Q4bits bits;
     const int8x16x2_t values;
-    const uint8x16_t hshuff = vreinterpretq_u8_u32(uint32x4_t{0x09010800, 0x0b030a02, 0x0d050c04, 0x0f070e06});
+    const uint8x16_t hshuff = vreinterpretq_u8_u32((uint32x4_t{0x09010800, 0x0b030a02, 0x0d050c04, 0x0f070e06}));
     const uint8x16_t hm = vdupq_n_u8(0x10);
     uint8x16x2_t hbits;
 
@@ -3821,7 +3821,7 @@ struct DequantizerIQ2K final : public BaseDequantizer<block_iq2_k> {
 
     Q2bits bits;
     const int8x16_t values = vreinterpretq_s8_u64(vdupq_n_u64(0x000000001101f3e1));
-    const uint8x16_t hshuff = vreinterpretq_u8_u32(uint32x4_t{0x09010800, 0x0b030a02, 0x0d050c04, 0x0f070e06});
+    const uint8x16_t hshuff = vreinterpretq_u8_u32((uint32x4_t{0x09010800, 0x0b030a02, 0x0d050c04, 0x0f070e06}));
 
 };
 
@@ -3877,9 +3877,9 @@ struct DequantizerIQ3K final : public BaseDequantizer<block_iq3_k> {
     Q2bits bits;
     uint8x16x2_t hbits;
     const int8x16_t values = vreinterpretq_s8_u64(vdupq_n_u64(0x2f1c0d01f6e9d8c1));
-    const uint8x16_t hshuff = vreinterpretq_u8_u32(uint32x4_t{0x09010800, 0x0b030a02, 0x0d050c04, 0x0f070e06});
+    const uint8x16_t hshuff = vreinterpretq_u8_u32((uint32x4_t{0x09010800, 0x0b030a02, 0x0d050c04, 0x0f070e06}));
     const uint8x16_t hmask = vdupq_n_u8(4);
-    const uint8x16_t sign_mask = vreinterpretq_u8_u64(uint64x2_t{0x0808040402020101, 0x8080404020201010});
+    const uint8x16_t sign_mask = vreinterpretq_u8_u64((uint64x2_t{0x0808040402020101, 0x8080404020201010}));
     const uint8x16_t sign_shuffle = load_sign_shuffle();
 
 };
@@ -4437,8 +4437,8 @@ void mul_mat_iq2_k_r4_q8_k(int n, const void * vx, size_t bx, const DataInfo& in
     auto m03 = vdupq_n_u8(0x03);
     auto ms = vdupq_n_u8(4);
     uint8x16x2_t shift_shuffle = {
-        vreinterpretq_u8_u64(uint64x2_t{0x0101010100000000, 0x0303030302020202}),
-        vreinterpretq_u8_u64(uint64x2_t{0x0505050504040404, 0x0707070706060606})
+        vreinterpretq_u8_u64((uint64x2_t{0x0101010100000000, 0x0303030302020202})),
+        vreinterpretq_u8_u64((uint64x2_t{0x0505050504040404, 0x0707070706060606}))
     };
     auto values8 = vld1_s8(iq2nl_values);
     auto values = vcombine_s8(values8, values8);
@@ -4543,8 +4543,8 @@ void mul_mat_iq3_k_r4_q8_k(int n, const void * vx, size_t bx, const DataInfo& in
     auto m03 = vdupq_n_u8(0x03);
     auto m04 = vdupq_n_u8(0x04);
     uint8x16x2_t shift_shuffle = {
-        vreinterpretq_u8_u64(uint64x2_t{0x0101010100000000, 0x0303030302020202}),
-        vreinterpretq_u8_u64(uint64x2_t{0x0505050504040404, 0x0707070706060606})
+        vreinterpretq_u8_u64((uint64x2_t{0x0101010100000000, 0x0303030302020202})),
+        vreinterpretq_u8_u64((uint64x2_t{0x0505050504040404, 0x0707070706060606}))
     };
     uint8x16x2_t smask = { vcombine_u8(vdup_n_u8(1), vdup_n_u8(2)), vcombine_u8(vdup_n_u8(4), vdup_n_u8(8)) };
     auto values = vld1q_s8(iq3nl_values);
@@ -4657,8 +4657,8 @@ void mul_mat_iq4_k_r4_q8_k(int n, const void * vx, size_t bx, const DataInfo& in
     auto ms = vdupq_n_u8(4);
     auto m32 = vdupq_n_s8(-32);
     uint8x16x2_t shift_shuffle = {
-        vreinterpretq_u8_u64(uint64x2_t{0x0101010100000000, 0x0303030302020202}),
-        vreinterpretq_u8_u64(uint64x2_t{0x0505050504040404, 0x0707070706060606})
+        vreinterpretq_u8_u64((uint64x2_t{0x0101010100000000, 0x0303030302020202})),
+        vreinterpretq_u8_u64((uint64x2_t{0x0505050504040404, 0x0707070706060606}))
     };
     auto values = vld1q_s8(iq4k_values);
     int nbl = n / QK_K;
@@ -4756,8 +4756,8 @@ void mul_mat_iq5_k_r4_q8_k(int n, const void * vx, size_t bx, const DataInfo& in
     auto m32 = vdupq_n_s8(-32);
     auto m10 = vdupq_n_u8(0x10);
     uint8x16x2_t shift_shuffle = {
-        vreinterpretq_u8_u64(uint64x2_t{0x0101010100000000, 0x0303030302020202}),
-        vreinterpretq_u8_u64(uint64x2_t{0x0505050504040404, 0x0707070706060606})
+        vreinterpretq_u8_u64((uint64x2_t{0x0101010100000000, 0x0303030302020202})),
+        vreinterpretq_u8_u64((uint64x2_t{0x0505050504040404, 0x0707070706060606}))
     };
     auto values = vld1q_s8_x2(iq5nl_values);
     int nbl = n / QK_K;

@@ -960,7 +960,7 @@ void quantize_row_q8_0_x4(const float * x, void * vy, int64_t k) {
             }
         }
     }
-#else
+#elif defined(__AVX2__)
     for (int i = 0; i < nb; i++) {
         int i4 = i/4, ir = i%4;
         // Load elements into 4 AVX vectors
@@ -1021,6 +1021,32 @@ void quantize_row_q8_0_x4(const float * x, void * vy, int64_t k) {
             _mm256_storeu_si256((__m256i *)y4[i4].qs + ir, i0);
         } else {
             _mm256_storeu_si256((__m256i *)y[i].qs, i0);
+        }
+    }
+#else
+    for (int i = 0; i < nb; i++) {
+        int i4 = i/4, ir = i%4;
+        float amax = 0.0f;
+        for (int j = 0; j < QK8_0; j++) {
+            float a = fabsf(x[i*QK8_0 + j]);
+            if (a > amax) amax = a;
+        }
+        const float d = amax / 127.0f;
+        const float id = d > 0 ? 1.0f/d : 0.0f;
+        if (i < nb4) {
+            y4[i4].d[ir] = GGML_FP32_TO_FP16(d);
+        } else {
+            y[i].d = GGML_FP32_TO_FP16(d);
+        }
+        for (int j = 0; j < QK8_0; j++) {
+            int val = (int)roundf(x[i*QK8_0 + j] * id);
+            if (val > 127) val = 127;
+            if (val < -128) val = -128;
+            if (i < nb4) {
+                y4[i4].qs[ir*QK8_0 + j] = (int8_t)val;
+            } else {
+                y[i].qs[j] = (int8_t)val;
+            }
         }
     }
 #endif
@@ -1094,7 +1120,7 @@ void quantize_row_q8_1_x4_T(const float * x, Block * y, int64_t k) {
             }
         }
     }
-#else
+#elif defined(__AVX2__)
     for (int i = 0; i < nb; i++) {
         int i4 = i/4, ir = i%4;
         // Load elements into 4 AVX vectors
@@ -1188,6 +1214,59 @@ void quantize_row_q8_1_x4_T(const float * x, Block * y, int64_t k) {
             _mm256_storeu_si256((__m256i *)y4[i4].qs + ir, i0);
         } else {
             _mm256_storeu_si256((__m256i *)y[i].qs, i0);
+        }
+    }
+#else
+    for (int i = 0; i < nb; i++) {
+        int i4 = i/4, ir = i%4;
+        float amax = 0.0f;
+        for (int j = 0; j < QK8_1; j++) {
+            float a = fabsf(x[i*QK8_1 + j]);
+            if (a > amax) amax = a;
+        }
+        float d = amax / 127.0f;
+        if constexpr (std::is_same_v<Block, block_q8_1>) {
+            if (i < nb4) {
+                y4[i4].d[ir] = GGML_FP32_TO_FP16(d);
+            } else {
+                y[i].d = GGML_FP32_TO_FP16(d);
+            }
+        } else {
+            auto t = GGML_FP32_TO_BF16(d);
+            d = ggml_bf16_to_fp32(t);
+            if (i < nb4) {
+                y4[i4].d[ir] = t.bits;
+            } else {
+                y[i].d = t.bits;
+            }
+        }
+        const float id = d > 0 ? 1.0f/d : 0.0f;
+        int sum = 0;
+        for (int j = 0; j < QK8_1; j++) {
+            int val = (int)roundf(x[i*QK8_1 + j] * id);
+            if (val > 127) val = 127;
+            if (val < -128) val = -128;
+            if (i < nb4) {
+                y4[i4].qs[ir*QK8_1 + j] = (int8_t)val;
+            } else {
+                y[i].qs[j] = (int8_t)val;
+            }
+            sum += val;
+        }
+        if constexpr (std::is_same_v<Block, block_q8_1>) {
+            if (i < nb4) {
+                y4[i4].d[ir+4] = GGML_FP32_TO_FP16(d * sum);
+            } else {
+                y[i].s = GGML_FP32_TO_FP16(d * sum);
+            }
+        } else {
+            if (i < nb4) {
+                auto i16 = (int16_t *)y4[i4].d;
+                i16[ir+4] = sum;
+            } else {
+                auto i16 = (int16_t *)&y[i].s;
+                i16[0] = sum;
+            }
         }
     }
 #endif
@@ -8430,7 +8509,7 @@ static void repack_q8_KV(int nrows, int n_per_row, const char * cx, char * cy, [
             x8[k] = (const int8_t *)(dx + 2);
         }
         for (int ib = 0; ib < n_per_row/16; ++ib) {
-#ifdef __AVX2__
+#ifdef __AVX2__ || __AVX__
 #define MM256_SET_M128I(a, b) _mm256_insertf128_si256(_mm256_castsi128_si256(b), (a), 1)
             auto m0 = MM256_SET_M128I(_mm_loadu_si128((const __m128i *)x8[4]+ib), _mm_loadu_si128((const __m128i *)x8[0]+ib));
             auto m1 = MM256_SET_M128I(_mm_loadu_si128((const __m128i *)x8[5]+ib), _mm_loadu_si128((const __m128i *)x8[1]+ib));
@@ -8478,15 +8557,14 @@ static void repack_q8_KV(int nrows, int n_per_row, const char * cx, char * cy, [
             vst1q_s8_x2(qy + 64 + 128*ib, m2);
             vst1q_s8_x2(qy + 96 + 128*ib, m3);
 #else
-            // TODO
             for (int l = 0; l < 4; ++l) {
-                for (int k = 0; k < 8; ++k) for (int i = 0; i < 4; ++i) {
-                    y[ib].qs[32*l+4*k+i+  0] = x8[k][ib].qs[i+4*l+ 0];
-                    y[ib].qs[32*l+4*k+i+128] = x8[k][ib].qs[i+4*l+16];
+                for (int k = 0; k < 8; ++k) {
+                    for (int i = 0; i < 4; ++i) {
+                        qy[128*ib + 32*l + 4*k + i] = x8[k][16*ib + 4*l + i];
+                    }
                 }
             }
 #endif
-
         }
         cx += 8*row_size_x;
         cy += online ? 8*row_size_x : 8*row_size_y;

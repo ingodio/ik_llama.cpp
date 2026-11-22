@@ -8,7 +8,7 @@
 #define GGML_COMMON_IMPL_C
 #include "ggml-common.h"
 
-#ifdef __x86_64__
+#ifdef __AVX__
 
 namespace {
 
@@ -57,7 +57,7 @@ struct QFBase {
         auto sum2 = _mm_add_ps(_mm512_extractf32x4_ps(acc, 2), _mm512_extractf32x4_ps(acc, 3));
         return _mm_add_ps(sum1, sum2);
     }
-#else
+#elif __AVX2__
     constexpr static int k_step = 8;
     using Data = __m256;
     using Acc  = __m256;
@@ -97,7 +97,54 @@ struct QFBase {
     static inline Data load4Floats(const Float * x) {
         return _mm256_insertf128_ps(_mm256_setzero_ps(), load128(x), 0);
     }
+#elif defined(__AVX__)
+static inline __m256 FMADD_PS(__m256 a, __m256 b, __m256 c) {
+    return _mm256_add_ps(_mm256_mul_ps(a, b), c);
+}
+    constexpr static int k_step = 8;
+    using Data = __m256;
+    using Acc  = __m256;
+#ifdef __F16C__
+    static inline Data load(const ggml_half * x) { return _mm256_cvtph_ps(_mm_loadu_si128((const __m128i *)x)); }
+#else
+//TODO
 #endif
+    static inline Data load(const float * x) { return _mm256_loadu_ps(x); }
+    static inline Data load(const ggml_bf16_t *x) {
+    __m128i v = _mm_loadu_si128((const __m128i*)x);
+    // Convert first 4 BF16 values to FP32 bit representations
+    __m128i lo = _mm_slli_epi32(
+        _mm_cvtepu16_epi32(v), 16);
+    // Convert next 4 BF16 values
+    __m128i hi = _mm_slli_epi32(
+        _mm_cvtepu16_epi32(_mm_srli_si128(v, 8)), 16);
+    // Combine into a 256-bit vector
+    __m256 r = _mm256_castps128_ps256(_mm_castsi128_ps(lo));
+    return _mm256_insertf128_ps(
+        r, _mm_castsi128_ps(hi), 1);
+    }
+    static inline Acc acc(Acc prev, const __m256& y, const __m256& x) {return FMADD_PS(y, x, prev);}
+    static inline Acc acc_r4(Acc acc, const Data * xv, const Data& yv) {
+        acc = FMADD_PS(xv[0], _mm256_shuffle_ps(yv, yv, 0x00), acc);
+        acc = FMADD_PS(xv[1], _mm256_shuffle_ps(yv, yv, 0x55), acc);
+        acc = FMADD_PS(xv[2], _mm256_shuffle_ps(yv, yv, 0xaa), acc);
+        acc = FMADD_PS(xv[3], _mm256_shuffle_ps(yv, yv, 0xff), acc);
+        return acc;
+    }
+    static inline Acc acc_first(const Data& y, const Data& x) {
+        return _mm256_mul_ps(y, x);
+    }
+    static inline float hsum(Acc acc) {
+        return hsum_float_8(acc);
+    }
+    static inline __m128 hsum_r4(Acc acc) {
+        return _mm_add_ps(_mm256_castps256_ps128(acc), _mm256_extractf128_ps(acc, 1));
+    }
+    template <typename Float>
+    static inline Data load4Floats(const Float * x) {
+        return _mm256_insertf128_ps(_mm256_setzero_ps(), load128(x), 0);
+    }
+#endif //AVX+
     static inline __m128 load128(const ggml_half * x) { return _mm_cvtph_ps(_mm_loadl_epi64((const __m128i *)x)); }
     static inline __m128 load128(const float * x) { return _mm_loadu_ps(x); }
     static inline __m128 load128(const ggml_bf16_t * x) {
@@ -733,8 +780,8 @@ struct QF16Base {
     constexpr static int k_step = 8;
     using Data = float16x8_t;
     using Acc  = float16x8_t;
-    static inline Data load(const __fp16 * x) { return vld1q_f16(x); }
-    static inline Data load4(const __fp16 * x) { return vcombine_f16(vld1_f16(x), vdup_n_f16(0)); }
+    static inline Data load(const float16_t * x) { return vld1q_f16(x); }
+    static inline Data load4(const float16_t * x) { return vcombine_f16(vld1_f16(x), vdup_n_f16(0)); }
     static inline Acc acc(Acc prev, const Data& y, const Data& x) {
         return vfmaq_f16(prev, y, x);
     }
@@ -743,7 +790,7 @@ struct QF16Base {
     }
     //constexpr static int k_step = 16;
     //using Data = float16x8x2_t;
-    //static inline Data load(const __fp16 * x) { return vld1q_f16_x2(x); }
+    //static inline Data load(const float16_t * x) { return vld1q_f16_x2(x); }
     //static inline Acc acc(Acc prev, const Data& y, const Data& x) {
     //    return vfmaq_f16(vfmaq_f16(prev, y.val[0], x.val[0]), y.val[1], x.val[1]);
     //}
@@ -759,15 +806,15 @@ template <int nrc> struct QF16 final : public QF16Base {
     using Base = QF16Base;
     constexpr static int nrc_y = nrc;
     QF16(const DataInfo& info) {
-        for (int iy = 0; iy < nrc_y; ++iy) y[iy] = (const __fp16 *)info.src1_row(iy);
+        for (int iy = 0; iy < nrc_y; ++iy) y[iy] = (const float16_t *)info.src1_row(iy);
     }
     QF16(const char * cx, size_t bx) {
-        for (int iy = 0; iy < nrc_y; ++iy) y[iy] = (const __fp16 *)(cx + iy*bx);
+        for (int iy = 0; iy < nrc_y; ++iy) y[iy] = (const float16_t *)(cx + iy*bx);
     }
     IQK_ALWAYS_INLINE Data load1(int iy, int i) const { return load(y[iy] + k_step*i); }
     IQK_ALWAYS_INLINE Data load_tail(int iy, int i) const { return load4(y[iy] + 4*i); }
     IQK_ALWAYS_INLINE float16x8x4_t loadx(int iy, int i) const { return vld1q_f16_x4(y[iy] + 4*k_step*i); }
-    const __fp16 * y[nrc_y];
+    const float16_t * y[nrc_y];
 };
 
 struct QBF16Base {
@@ -1182,7 +1229,7 @@ void iqk_gemm_default_floats(int D, int nq, const char * cx, size_t bx, DataInfo
 
 namespace {
 
-#ifdef __x86_64__
+#ifdef __AVX__
 using F8Base = QFBase;
 #else
 struct F8Base {
@@ -1233,7 +1280,7 @@ struct F8 : F8Base {
         _mm256_storeu_si256((__m256i *)y, _mm512_cvtepi32_epi16(_mm512_srli_epi32(_mm512_castps_si512(decode(x)), 16)));
     }
     static inline Data add(Data a, Data b) { return _mm512_add_ps(a, b); }
-#elif defined __AVX2__
+#elif defined __AVX__
     static inline Data zero() { return _mm256_setzero_ps(); }
     static inline Data decode(const uint8_t * x) {
         const auto q = _mm_cvtepi8_epi16(_mm_loadl_epi64((const __m128i *)x));
@@ -1242,10 +1289,19 @@ struct F8 : F8Base {
         bits = _mm_or_si128(bits, _mm_and_si128(nan, _mm_set1_epi16(0x7c00)));
         return _mm256_mul_ps(_mm256_cvtph_ps(bits), _mm256_set1_ps(256));
     }
+#ifdef __AVX2__
     static inline void decode_bf16(const uint8_t * x, uint16_t * y) {
         const auto v = _mm256_srli_epi32(_mm256_castps_si256(decode(x)), 16);
         _mm_storeu_si128((__m128i *)y, _mm_packus_epi32(_mm256_castsi256_si128(v), _mm256_extracti128_si256(v, 1)));
     }
+#else
+    static inline void decode_bf16(const uint8_t * x, uint16_t * y) {
+    const __m256 v = decode(x);
+    const __m128i lo = _mm_srli_epi32(_mm_castps_si128(_mm256_castps256_ps128(v)), 16);
+    const __m128i hi = _mm_srli_epi32(_mm_castps_si128(_mm256_extractf128_ps(v, 1)), 16);
+    _mm_storeu_si128((__m128i *)y,_mm_packus_epi32(lo, hi));
+    }
+#endif
     static inline Data add(Data a, Data b) { return _mm256_add_ps(a, b); }
 #else
     static inline Data zero() {
@@ -1294,7 +1350,7 @@ struct F8BF16 {
 };
 #endif
 
-#ifndef __x86_64__
+#ifndef __AVX__
 
 template <int nrc> struct F8QF32 : QF32Base {
     using Base = QF32Base;
@@ -1344,7 +1400,7 @@ inline F8Layout f8_layout(bool block_scaled, int n) {
 
 template <bool block_scaled, int nrc_y, typename F = F8>
 void mul_mat_f8(int n, const void * vx, size_t bx, const DataInfo& info, int nrc_x) {
-#ifndef __x86_64__
+#ifndef __AVX__
     if constexpr (block_scaled && nrc_y == 8 && std::is_same_v<F, F8>) {
         mul_mat_f8_b128_bf16(n, vx, bx, info, nrc_x);
         return;
@@ -1363,7 +1419,7 @@ void mul_mat_f8(int n, const void * vx, size_t bx, const DataInfo& info, int nrc
             typename F::Data acc[nrc_y][2];
             for (int iy = 0; iy < nrc_y; ++iy) acc[iy][0] = acc[iy][1] = F::zero();
             int i = 0;
-#ifdef __x86_64__
+#ifdef __AVX__
             for (; i + 2*F::k_step <= block_size; i += 2*F::k_step) {
                 const auto x0 = F::decode(x + i);
                 const auto x1 = F::decode(x + i + F::k_step);
@@ -1380,7 +1436,7 @@ void mul_mat_f8(int n, const void * vx, size_t bx, const DataInfo& info, int nrc
                 }
             }
             for (int iy = 0; iy < nrc_y; ++iy) {
-#ifdef __x86_64__
+#ifdef __AVX__
                 float partial = F::hsum(F::add(acc[iy][0], acc[iy][1]));
 #else
                 float partial = F::hsum(acc[iy][0]);
@@ -1436,7 +1492,7 @@ bool iqk_convert_f8(int typeA, int n, const void * vx, size_t bx, void * vy, siz
         }
         return true;
     }
-#if defined __AVX2__ && !defined __AVX512F__
+#if defined __AVX__ && !defined __AVX512F__
     if (typeA == GGML_TYPE_F8_E4M3_B128) {
         for (int row = 0; row < nrc_x; ++row) {
             const auto * x = (const uint8_t *)vx + row*bx;
@@ -1464,7 +1520,7 @@ struct F8Q80 {
 };
 
 inline void f8_to_q80(const int8_t (*table)[128], const uint8_t * x, float scale, block_q8_0 * y) {
-#if defined __AVX2__
+#if defined __AV2__
     const auto c = _mm256_loadu_si256((const __m256i *)x);
     const auto mag = _mm256_and_si256(c, _mm256_set1_epi8(127));
     const auto m8 = _mm_max_epu8(_mm256_castsi256_si128(mag), _mm256_extracti128_si256(mag, 1));
@@ -1481,6 +1537,31 @@ inline void f8_to_q80(const int8_t (*table)[128], const uint8_t * x, float scale
     }
 #endif
     _mm256_storeu_si256((__m256i *)y->qs, _mm256_sign_epi8(q, _mm256_or_si256(c, _mm256_set1_epi8(1))));
+#elif defined __AVX__
+    const __m128i c0 = _mm_loadu_si128((const __m128i *)x);
+    const __m128i c1 = _mm_loadu_si128((const __m128i *)(x + 16));
+    const __m128i mask = _mm_set1_epi8(127);
+    const __m128i mag0 = _mm_and_si128(c0, mask);
+    const __m128i mag1 = _mm_and_si128(c1, mask);
+    const auto m8 = _mm_max_epu8(mag0, mag1);
+    const int m = 255 - _mm_extract_epi16(_mm_minpos_epu16(_mm_cvtepu8_epi16(_mm_xor_si128(
+                    _mm_max_epu8(m8, _mm_srli_si128(m8, 8)), _mm_set1_epi8(-1)))), 0);
+    const __m128i hi0 = _mm_and_si128(_mm_srli_epi16(mag0, 4), _mm_set1_epi8(7));
+    const __m128i hi1 = _mm_and_si128(_mm_srli_epi16(mag1, 4), _mm_set1_epi8(7));
+    auto q0 = _mm_setzero_si128();
+    auto q1 = _mm_setzero_si128();
+    for (int k = 0; k <= (m >> 4); ++k) {
+        const auto t = _mm_loadu_si128((const __m128i *)(table[m] + 16*k));
+        const auto k8 = _mm_set1_epi8(k);
+        q0 = _mm_or_si128(q0, _mm_and_si128(
+            _mm_shuffle_epi8(t, mag0),
+            _mm_cmpeq_epi8(hi0, k8)));
+        q1 = _mm_or_si128(q1, _mm_and_si128(
+            _mm_shuffle_epi8(t, mag1),
+            _mm_cmpeq_epi8(hi1, k8)));
+    }
+    _mm_storeu_si128((__m128i *)y->qs, _mm_sign_epi8(q0, _mm_or_si128(c0, _mm_set1_epi8(1))));
+    _mm_storeu_si128((__m128i *)(y->qs + 16), _mm_sign_epi8(q1, _mm_or_si128(c1, _mm_set1_epi8(1))));
 #else
     const uint8x16_t c[2] = {vld1q_u8(x), vld1q_u8(x + 16)};
     const uint8x16_t mag[2] = {vandq_u8(c[0], vdupq_n_u8(127)), vandq_u8(c[1], vdupq_n_u8(127))};

@@ -47,7 +47,7 @@ inline float nvfp4_requant_scale(const uint8_t * sb, float s1, float s2, int a1,
 // ============================== Legacy quants
 //
 
-#ifdef __x86_64__
+#ifdef __AVX2__
 
 namespace {
 
@@ -5501,7 +5501,7 @@ static void mul_mat_q2_0_q8_0_x4(int n, const void * vx, size_t bx, const DataIn
                 auto d1 = dx*GGML_FP16_TO_FP32(yb[0].d);
                 auto d2 = dx*GGML_FP16_TO_FP32(yb[1].d);
                 auto p01 = vpaddq_s32(p0, p1); // 0, 0, 1, 1
-                acc[iy]  = vfmaq_f32(acc[iy], float32x4_t{d1, d1, d2, d2}, vcvtq_f32_s32(p01));
+                acc[iy]  = vfmaq_f32(acc[iy], (float32x4_t{d1, d1, d2, d2}), vcvtq_f32_s32(p01));
             }
 
         }
@@ -5595,7 +5595,7 @@ static void mul_mat_nvfp4_ks_q8_0_x4(int n, const void * vx, size_t bx, const Da
                 auto p3 = ggml_vdotq_s32(vdupq_n_s32(0), qx[3], y1.val[1]);
                 auto s  = vpaddq_s32(vpaddq_s32(p0, p1), vpaddq_s32(p2, p3));
                 float d0 = GGML_FP16_TO_FP32(y[0].d), d1 = GGML_FP16_TO_FP32(y[1].d);
-                acc[iy] = vfmaq_f32(acc[iy], vmulq_f32(sc, float32x4_t{d0, d0, d1, d1}), vcvtq_f32_s32(s));
+                acc[iy] = vfmaq_f32(acc[iy], vmulq_f32(sc, (float32x4_t{d0, d0, d1, d1})), vcvtq_f32_s32(s));
             }
         }
         for (int iy = 0; iy < nrc_y; ++iy) {

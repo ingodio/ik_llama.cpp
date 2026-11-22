@@ -786,7 +786,7 @@ static const uint32_t iq1s_grid_us_neon[2048] = {
 
 }
 
-#ifdef __x86_64__
+#ifdef __AVX2__
 
 namespace {
 template <typename Block>
@@ -3089,22 +3089,22 @@ static void mul_mat_iq1_s_r4_q8_1(int n, const void * vx, size_t bx, const DataI
                 auto signs = vreinterpret_s16_u16(vorr_u16(vceq_u16(vand_u16(sas, ms), ms), vdup_n_u16(1)));
                 signs = vadd_s16(vdup_n_s16(-8), signs);
                 auto delta4 = vmulq_f32(vdupq_n_f32(0.125f), vcvtq_f32_s32(vmull_s16(signs, scales4)));
-                qx[0] = vreinterpretq_u8_u32(uint32x4_t{iq1s_grid_us_neon[x[4*ib+k].qs[ 0] | ((x[4*ib+k].qh[0] << 8) & 0x0700)],
+                qx[0] = vreinterpretq_u8_u32((uint32x4_t{iq1s_grid_us_neon[x[4*ib+k].qs[ 0] | ((x[4*ib+k].qh[0] << 8) & 0x0700)],
                                                         iq1s_grid_us_neon[x[4*ib+k].qs[ 1] | ((x[4*ib+k].qh[1] << 8) & 0x0700)],
                                                         iq1s_grid_us_neon[x[4*ib+k].qs[ 2] | ((x[4*ib+k].qh[2] << 8) & 0x0700)],
-                                                        iq1s_grid_us_neon[x[4*ib+k].qs[ 3] | ((x[4*ib+k].qh[3] << 8) & 0x0700)]});
-                qx[2] = vreinterpretq_u8_u32(uint32x4_t{iq1s_grid_us_neon[x[4*ib+k].qs[ 4] | ((x[4*ib+k].qh[0] << 5) & 0x0700)],
+                                                        iq1s_grid_us_neon[x[4*ib+k].qs[ 3] | ((x[4*ib+k].qh[3] << 8) & 0x0700)]}));
+                qx[2] = vreinterpretq_u8_u32((uint32x4_t{iq1s_grid_us_neon[x[4*ib+k].qs[ 4] | ((x[4*ib+k].qh[0] << 5) & 0x0700)],
                                                         iq1s_grid_us_neon[x[4*ib+k].qs[ 5] | ((x[4*ib+k].qh[1] << 5) & 0x0700)],
                                                         iq1s_grid_us_neon[x[4*ib+k].qs[ 6] | ((x[4*ib+k].qh[2] << 5) & 0x0700)],
-                                                        iq1s_grid_us_neon[x[4*ib+k].qs[ 7] | ((x[4*ib+k].qh[3] << 5) & 0x0700)]});
-                qx[4] = vreinterpretq_u8_u32(uint32x4_t{iq1s_grid_us_neon[x[4*ib+k].qs[ 8] | ((x[4*ib+k].qh[0] << 2) & 0x0700)],
+                                                        iq1s_grid_us_neon[x[4*ib+k].qs[ 7] | ((x[4*ib+k].qh[3] << 5) & 0x0700)]}));
+                qx[4] = vreinterpretq_u8_u32((uint32x4_t{iq1s_grid_us_neon[x[4*ib+k].qs[ 8] | ((x[4*ib+k].qh[0] << 2) & 0x0700)],
                                                         iq1s_grid_us_neon[x[4*ib+k].qs[ 9] | ((x[4*ib+k].qh[1] << 2) & 0x0700)],
                                                         iq1s_grid_us_neon[x[4*ib+k].qs[10] | ((x[4*ib+k].qh[2] << 2) & 0x0700)],
-                                                        iq1s_grid_us_neon[x[4*ib+k].qs[11] | ((x[4*ib+k].qh[3] << 2) & 0x0700)]});
-                qx[6] = vreinterpretq_u8_u32(uint32x4_t{iq1s_grid_us_neon[x[4*ib+k].qs[12] | ((x[4*ib+k].qh[0] >> 1) & 0x0700)],
+                                                        iq1s_grid_us_neon[x[4*ib+k].qs[11] | ((x[4*ib+k].qh[3] << 2) & 0x0700)]}));
+                qx[6] = vreinterpretq_u8_u32((uint32x4_t{iq1s_grid_us_neon[x[4*ib+k].qs[12] | ((x[4*ib+k].qh[0] >> 1) & 0x0700)],
                                                         iq1s_grid_us_neon[x[4*ib+k].qs[13] | ((x[4*ib+k].qh[1] >> 1) & 0x0700)],
                                                         iq1s_grid_us_neon[x[4*ib+k].qs[14] | ((x[4*ib+k].qh[2] >> 1) & 0x0700)],
-                                                        iq1s_grid_us_neon[x[4*ib+k].qs[15] | ((x[4*ib+k].qh[3] >> 1) & 0x0700)]});
+                                                        iq1s_grid_us_neon[x[4*ib+k].qs[15] | ((x[4*ib+k].qh[3] >> 1) & 0x0700)]}));
                 qx[1] = vandq_u8(vshrq_n_u8(qx[0], 4), mask); qx[0] = vandq_u8(qx[0], mask);
                 qx[3] = vandq_u8(vshrq_n_u8(qx[2], 4), mask); qx[2] = vandq_u8(qx[2], mask);
                 qx[5] = vandq_u8(vshrq_n_u8(qx[4], 4), mask); qx[4] = vandq_u8(qx[4], mask);
@@ -3154,7 +3154,7 @@ static void mul_mat_iq1_m_r4_q8_0(int n, const void * vx, size_t bx, const DataI
         for (int ib = 0; ib < nb/4; ++ib) {
             for (int k = 0; k < 4; ++k) {
                 auto scales4 = vdup_n_u32(((const uint32_t *)x[4*ib+k].scales)[0]);
-                scales4 = vand_u8(vshl_u32(scales4, int32x2_t{0, -4}), vdup_n_u8(0xf));
+                scales4 = vand_u8(vshl_u32(scales4, (int32x2_t{0, -4})), vdup_n_u8(0xf));
                 auto scales16 = vmovl_u8(scales4);
                 auto scales1 = vmovl_u16(vget_low_u16(scales16));
                 auto scales2 = vmovl_u16(vget_high_u16(scales16));
@@ -3162,22 +3162,22 @@ static void mul_mat_iq1_m_r4_q8_0(int n, const void * vx, size_t bx, const DataI
                 auto idxh = uint32x4_t{qh[0], qh[0] >> 4, qh[1], qh[1] >> 4};
                 auto signs = vreinterpretq_s8_u8(vorrq_u8(vceqq_u8(vandq_u8(idxh, ms), ms), vdupq_n_u8(1)));
                 signs = vaddq_s8(signs, vdupq_n_s8(-8));
-                qx[0] = vreinterpretq_s8_u32(uint32x4_t{iq1s_grid_us_neon[x[4*ib+k].qs[ 0] | ((x[4*ib+k].qh[0] << 8) & 0x0700)],
+                qx[0] = vreinterpretq_s8_u32((uint32x4_t{iq1s_grid_us_neon[x[4*ib+k].qs[ 0] | ((x[4*ib+k].qh[0] << 8) & 0x0700)],
                                                         iq1s_grid_us_neon[x[4*ib+k].qs[ 1] | ((x[4*ib+k].qh[1] << 8) & 0x0700)],
                                                         iq1s_grid_us_neon[x[4*ib+k].qs[ 2] | ((x[4*ib+k].qh[2] << 8) & 0x0700)],
-                                                        iq1s_grid_us_neon[x[4*ib+k].qs[ 3] | ((x[4*ib+k].qh[3] << 8) & 0x0700)]});
-                qx[2] = vreinterpretq_s8_u32(uint32x4_t{iq1s_grid_us_neon[x[4*ib+k].qs[ 4] | ((x[4*ib+k].qh[0] << 4) & 0x0700)],
+                                                        iq1s_grid_us_neon[x[4*ib+k].qs[ 3] | ((x[4*ib+k].qh[3] << 8) & 0x0700)]}));
+                qx[2] = vreinterpretq_s8_u32((uint32x4_t{iq1s_grid_us_neon[x[4*ib+k].qs[ 4] | ((x[4*ib+k].qh[0] << 4) & 0x0700)],
                                                         iq1s_grid_us_neon[x[4*ib+k].qs[ 5] | ((x[4*ib+k].qh[1] << 4) & 0x0700)],
                                                         iq1s_grid_us_neon[x[4*ib+k].qs[ 6] | ((x[4*ib+k].qh[2] << 4) & 0x0700)],
-                                                        iq1s_grid_us_neon[x[4*ib+k].qs[ 7] | ((x[4*ib+k].qh[3] << 4) & 0x0700)]});
-                qx[4] = vreinterpretq_s8_u32(uint32x4_t{iq1s_grid_us_neon[x[4*ib+k].qs[ 8] | ((x[4*ib+k].qh[4] << 8) & 0x0700)],
+                                                        iq1s_grid_us_neon[x[4*ib+k].qs[ 7] | ((x[4*ib+k].qh[3] << 4) & 0x0700)]}));
+                qx[4] = vreinterpretq_s8_u32((uint32x4_t{iq1s_grid_us_neon[x[4*ib+k].qs[ 8] | ((x[4*ib+k].qh[4] << 8) & 0x0700)],
                                                         iq1s_grid_us_neon[x[4*ib+k].qs[ 9] | ((x[4*ib+k].qh[5] << 8) & 0x0700)],
                                                         iq1s_grid_us_neon[x[4*ib+k].qs[10] | ((x[4*ib+k].qh[6] << 8) & 0x0700)],
-                                                        iq1s_grid_us_neon[x[4*ib+k].qs[11] | ((x[4*ib+k].qh[7] << 8) & 0x0700)]});
-                qx[6] = vreinterpretq_s8_u32(uint32x4_t{iq1s_grid_us_neon[x[4*ib+k].qs[12] | ((x[4*ib+k].qh[4] << 4) & 0x0700)],
+                                                        iq1s_grid_us_neon[x[4*ib+k].qs[11] | ((x[4*ib+k].qh[7] << 8) & 0x0700)]}));
+                qx[6] = vreinterpretq_s8_u32((uint32x4_t{iq1s_grid_us_neon[x[4*ib+k].qs[12] | ((x[4*ib+k].qh[4] << 4) & 0x0700)],
                                                         iq1s_grid_us_neon[x[4*ib+k].qs[13] | ((x[4*ib+k].qh[5] << 4) & 0x0700)],
                                                         iq1s_grid_us_neon[x[4*ib+k].qs[14] | ((x[4*ib+k].qh[6] << 4) & 0x0700)],
-                                                        iq1s_grid_us_neon[x[4*ib+k].qs[15] | ((x[4*ib+k].qh[7] << 4) & 0x0700)]});
+                                                        iq1s_grid_us_neon[x[4*ib+k].qs[15] | ((x[4*ib+k].qh[7] << 4) & 0x0700)]}));
                 auto shuffle = shuffle0;
                 for (int j = 0; j < 4; ++j) {
                     auto s = vqtbl1q_s8(signs, shuffle);
@@ -3234,22 +3234,22 @@ void mul_mat_iq1_s_r4_q8_1_1(int n, const void * vx, size_t bx, const DataInfo& 
                 scales4 = vorr_u16(vshl_n_u16(scales4, 1), vdup_n_u16(1));
                 auto signs = vreinterpret_s16_u16(vorr_u16(vceq_u16(vand_u16(sas, ms), ms), vdup_n_u16(1)));
                 isum[k+4] = vmull_s16(signs, scales4);
-                qx[0] = vreinterpretq_s8_u64(uint64x2_t{iq1s_grid[x[4*ib+k].qs[ 0] | ((x[4*ib+k].qh[0] << 8) & 0x0700)],
-                                                        iq1s_grid[x[4*ib+k].qs[ 4] | ((x[4*ib+k].qh[0] << 5) & 0x0700)]});
-                qx[1] = vreinterpretq_s8_u64(uint64x2_t{iq1s_grid[x[4*ib+k].qs[ 8] | ((x[4*ib+k].qh[0] << 2) & 0x0700)],
-                                                        iq1s_grid[x[4*ib+k].qs[12] | ((x[4*ib+k].qh[0] >> 1) & 0x0700)]});
-                qx[2] = vreinterpretq_s8_u64(uint64x2_t{iq1s_grid[x[4*ib+k].qs[ 1] | ((x[4*ib+k].qh[1] << 8) & 0x0700)],
-                                                        iq1s_grid[x[4*ib+k].qs[ 5] | ((x[4*ib+k].qh[1] << 5) & 0x0700)]});
-                qx[3] = vreinterpretq_s8_u64(uint64x2_t{iq1s_grid[x[4*ib+k].qs[ 9] | ((x[4*ib+k].qh[1] << 2) & 0x0700)],
-                                                        iq1s_grid[x[4*ib+k].qs[13] | ((x[4*ib+k].qh[1] >> 1) & 0x0700)]});
-                qx[4] = vreinterpretq_s8_u64(uint64x2_t{iq1s_grid[x[4*ib+k].qs[ 2] | ((x[4*ib+k].qh[2] << 8) & 0x0700)],
-                                                        iq1s_grid[x[4*ib+k].qs[ 6] | ((x[4*ib+k].qh[2] << 5) & 0x0700)]});
-                qx[5] = vreinterpretq_s8_u64(uint64x2_t{iq1s_grid[x[4*ib+k].qs[10] | ((x[4*ib+k].qh[2] << 2) & 0x0700)],
-                                                        iq1s_grid[x[4*ib+k].qs[14] | ((x[4*ib+k].qh[2] >> 1) & 0x0700)]});
-                qx[6] = vreinterpretq_s8_u64(uint64x2_t{iq1s_grid[x[4*ib+k].qs[ 3] | ((x[4*ib+k].qh[3] << 8) & 0x0700)],
-                                                        iq1s_grid[x[4*ib+k].qs[ 7] | ((x[4*ib+k].qh[3] << 5) & 0x0700)]});
-                qx[7] = vreinterpretq_s8_u64(uint64x2_t{iq1s_grid[x[4*ib+k].qs[11] | ((x[4*ib+k].qh[3] << 2) & 0x0700)],
-                                                        iq1s_grid[x[4*ib+k].qs[15] | ((x[4*ib+k].qh[3] >> 1) & 0x0700)]});
+                qx[0] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[x[4*ib+k].qs[ 0] | ((x[4*ib+k].qh[0] << 8) & 0x0700)],
+                                                        iq1s_grid[x[4*ib+k].qs[ 4] | ((x[4*ib+k].qh[0] << 5) & 0x0700)]}));
+                qx[1] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[x[4*ib+k].qs[ 8] | ((x[4*ib+k].qh[0] << 2) & 0x0700)],
+                                                        iq1s_grid[x[4*ib+k].qs[12] | ((x[4*ib+k].qh[0] >> 1) & 0x0700)]}));
+                qx[2] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[x[4*ib+k].qs[ 1] | ((x[4*ib+k].qh[1] << 8) & 0x0700)],
+                                                        iq1s_grid[x[4*ib+k].qs[ 5] | ((x[4*ib+k].qh[1] << 5) & 0x0700)]}));
+                qx[3] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[x[4*ib+k].qs[ 9] | ((x[4*ib+k].qh[1] << 2) & 0x0700)],
+                                                        iq1s_grid[x[4*ib+k].qs[13] | ((x[4*ib+k].qh[1] >> 1) & 0x0700)]}));
+                qx[4] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[x[4*ib+k].qs[ 2] | ((x[4*ib+k].qh[2] << 8) & 0x0700)],
+                                                        iq1s_grid[x[4*ib+k].qs[ 6] | ((x[4*ib+k].qh[2] << 5) & 0x0700)]}));
+                qx[5] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[x[4*ib+k].qs[10] | ((x[4*ib+k].qh[2] << 2) & 0x0700)],
+                                                        iq1s_grid[x[4*ib+k].qs[14] | ((x[4*ib+k].qh[2] >> 1) & 0x0700)]}));
+                qx[6] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[x[4*ib+k].qs[ 3] | ((x[4*ib+k].qh[3] << 8) & 0x0700)],
+                                                        iq1s_grid[x[4*ib+k].qs[ 7] | ((x[4*ib+k].qh[3] << 5) & 0x0700)]}));
+                qx[7] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[x[4*ib+k].qs[11] | ((x[4*ib+k].qh[3] << 2) & 0x0700)],
+                                                        iq1s_grid[x[4*ib+k].qs[15] | ((x[4*ib+k].qh[3] >> 1) & 0x0700)]}));
                 auto scales = vmovl_u16(scales4);
                 auto y = vld1q_s8_x2(q8.y[0][ib].qs + 32*k);
                 auto sumi1 = ggml_vdotq_s32(ggml_vdotq_s32(vdupq_n_s32(0), qx[0], y.val[0]), qx[1], y.val[1]);
@@ -3299,10 +3299,10 @@ void mul_mat_iq1_s_q8_K(int n, const void * vx, size_t bx, const DataInfo& info,
             auto qs = iq1s[ibl].qs;
             auto qh = iq1s[ibl].qh;
             for (int ib64 = 0; ib64 < QK_K/64; ++ib64) {
-                qx[4*ib64+0] = vreinterpretq_s8_u64(uint64x2_t{iq1s_grid[qs[0] | ((qh[2*ib64+0] << 8) & 0x700)], iq1s_grid[qs[1] | ((qh[2*ib64+0] << 5) & 0x700)]});
-                qx[4*ib64+1] = vreinterpretq_s8_u64(uint64x2_t{iq1s_grid[qs[2] | ((qh[2*ib64+0] << 2) & 0x700)], iq1s_grid[qs[3] | ((qh[2*ib64+0] >> 1) & 0x700)]});
-                qx[4*ib64+2] = vreinterpretq_s8_u64(uint64x2_t{iq1s_grid[qs[4] | ((qh[2*ib64+1] << 8) & 0x700)], iq1s_grid[qs[5] | ((qh[2*ib64+1] << 5) & 0x700)]});
-                qx[4*ib64+3] = vreinterpretq_s8_u64(uint64x2_t{iq1s_grid[qs[6] | ((qh[2*ib64+1] << 2) & 0x700)], iq1s_grid[qs[7] | ((qh[2*ib64+1] >> 1) & 0x700)]});
+                qx[4*ib64+0] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[qs[0] | ((qh[2*ib64+0] << 8) & 0x700)], iq1s_grid[qs[1] | ((qh[2*ib64+0] << 5) & 0x700)]}));
+                qx[4*ib64+1] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[qs[2] | ((qh[2*ib64+0] << 2) & 0x700)], iq1s_grid[qs[3] | ((qh[2*ib64+0] >> 1) & 0x700)]}));
+                qx[4*ib64+2] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[qs[4] | ((qh[2*ib64+1] << 8) & 0x700)], iq1s_grid[qs[5] | ((qh[2*ib64+1] << 5) & 0x700)]}));
+                qx[4*ib64+3] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[qs[6] | ((qh[2*ib64+1] << 2) & 0x700)], iq1s_grid[qs[7] | ((qh[2*ib64+1] >> 1) & 0x700)]}));
                 qs += 8;
             }
             scales[0] = vreinterpretq_s32_u32(vmovl_u16(vget_low_u16 (scales128)));
@@ -3343,8 +3343,8 @@ void mul_mat_iq1_m_q8_K(int n, const void * vx, size_t bx, const DataInfo& info,
     int8x16x2_t qx[8];
     int32x4x4_t scales;
     float32x4_t acc[nrc_y] = {};
-    uint8x16x2_t scale_shuffle = {vreinterpretq_u8_u64(uint64x2_t{0x0100010001000100, 0x0302030203020302}),
-                                  vreinterpretq_u8_u64(uint64x2_t{0x0504050405040504, 0x0706070607060706})};
+    uint8x16x2_t scale_shuffle = {vreinterpretq_u8_u64((uint64x2_t{0x0100010001000100, 0x0302030203020302})),
+                                  vreinterpretq_u8_u64((uint64x2_t{0x0504050405040504, 0x0706070607060706}))};
     uint64x2x2_t delta_mask = {uint64x2_t{0x0008, 0x0080}, uint64x2_t{0x0800, 0x8000}};
     iq1m_scale_t block_scale;
     for (int ix = 0; ix < nrc_x; ++ix) {
@@ -3367,14 +3367,14 @@ void mul_mat_iq1_m_q8_K(int n, const void * vx, size_t bx, const DataInfo& info,
             scales.val[2] = vmovl_s16(vget_low_s16 (sc16.val[1]));
             scales.val[3] = vmovl_s16(vget_high_s16(sc16.val[1]));
             for (int ib64 = 0; ib64 < QK_K/64; ++ib64) {
-                qx[2*ib64+0] = {vreinterpretq_s8_u64(uint64x2_t{iq1s_grid_us[qs[0] | (((uint16_t)qh[0] << 8) & 0x700)],
-                                                                iq1s_grid_us[qs[1] | (((uint16_t)qh[0] << 4) & 0x700)]}),
-                                vreinterpretq_s8_u64(uint64x2_t{iq1s_grid_us[qs[2] | (((uint16_t)qh[1] << 8) & 0x700)],
-                                                                iq1s_grid_us[qs[3] | (((uint16_t)qh[1] << 4) & 0x700)]})};
-                qx[2*ib64+1] = {vreinterpretq_s8_u64(uint64x2_t{iq1s_grid_us[qs[4] | (((uint16_t)qh[2] << 8) & 0x700)],
-                                                                iq1s_grid_us[qs[5] | (((uint16_t)qh[2] << 4) & 0x700)]}),
-                                vreinterpretq_s8_u64(uint64x2_t{iq1s_grid_us[qs[6] | (((uint16_t)qh[3] << 8) & 0x700)],
-                                                                iq1s_grid_us[qs[7] | (((uint16_t)qh[3] << 4) & 0x700)]})};
+                qx[2 * ib64] = {vreinterpretq_s8_u64((uint64x2_t{iq1s_grid_us[qs[0] | (((uint16_t) qh[0] << 8) & 0x700)],
+                                                                 iq1s_grid_us[qs[1] | (((uint16_t) qh[0] << 4) & 0x700)]})),
+                                vreinterpretq_s8_u64((uint64x2_t{iq1s_grid_us[qs[2] | (((uint16_t) qh[1] << 8) & 0x700)],
+                                                                 iq1s_grid_us[qs[3] | (((uint16_t) qh[1] << 4) & 0x700)]}))};
+                qx[2 * ib64] = {vreinterpretq_s8_u64((uint64x2_t{iq1s_grid_us[qs[4] | (((uint16_t) qh[0] << 8) & 0x700)],
+                                                                 iq1s_grid_us[qs[5] | (((uint16_t) qh[0] << 4) & 0x700)]})),
+                                vreinterpretq_s8_u64((uint64x2_t{iq1s_grid_us[qs[6] | (((uint16_t) qh[1] << 8) & 0x700)],
+                                                                 iq1s_grid_us[qs[7] | (((uint16_t) qh[1] << 4) & 0x700)]}))};
                 auto qh16 = (const uint16_t *)qh;
                 auto h1 = vdupq_n_u64(qh16[0]);
                 auto h2 = vdupq_n_u64(qh16[1]);
@@ -3484,8 +3484,8 @@ void iqk_convert_iq1_s_q8_k_r8(int n, const void * vx, size_t bx, void * vy, int
                 int8x16x2_t value;
                 for (int ib32 = 0; ib32 < 8; ++ib32) {
                     ls[2*ib32 + 0] = ls[2*ib32 + 1] = (2*((qh[ib32] >> 12) & 7) + 1);
-                    value.val[0] = vreinterpretq_s8_u64(uint64x2_t{iq1s_grid[qs[0] | ((qh[ib32] << 8) & 0x700)], iq1s_grid[qs[1] | ((qh[ib32] << 5) & 0x700)]});
-                    value.val[1] = vreinterpretq_s8_u64(uint64x2_t{iq1s_grid[qs[2] | ((qh[ib32] << 2) & 0x700)], iq1s_grid[qs[3] | ((qh[ib32] >> 1) & 0x700)]});
+                    value.val[0] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[qs[0] | ((qh[ib32] << 8) & 0x700)], iq1s_grid[qs[1] | ((qh[ib32] << 5) & 0x700)]}));
+                    value.val[1] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[qs[2] | ((qh[ib32] << 2) & 0x700)], iq1s_grid[qs[3] | ((qh[ib32] >> 1) & 0x700)]}));
                     value.val[0] = vshlq_n_s8(vaddq_s8(value.val[0], vdupq_n_s8(1)), 3);
                     value.val[1] = vshlq_n_s8(vaddq_s8(value.val[1], vdupq_n_s8(1)), 3);
                     auto delta = vdupq_n_s8(qh[ib32] & 0x8000 ? -9 : -7);
@@ -3535,8 +3535,8 @@ void iqk_convert_iq1_m_q8_k_r8(int n, const void * vx, size_t bx, void * vy, int
                     ls[2*ib32 + 1] = (2*((sc[ib32/2] >> (6*(ib32%2)+3)) & 0x7) + 1);
                     //value = _mm256_set_epi64x(iq1s_grid[qs[3] | ((qh[1] << 4) & 0x700)], iq1s_grid[qs[2] | ((qh[1] << 8) & 0x700)],
                     //                          iq1s_grid[qs[1] | ((qh[0] << 4) & 0x700)], iq1s_grid[qs[0] | ((qh[0] << 8) & 0x700)]);
-                    value.val[0] = vreinterpretq_s8_u64(uint64x2_t{iq1s_grid[qs[0] | ((qh[0] << 8) & 0x700)], iq1s_grid[qs[1] | ((qh[0] << 4) & 0x700)]});
-                    value.val[1] = vreinterpretq_s8_u64(uint64x2_t{iq1s_grid[qs[2] | ((qh[1] << 8) & 0x700)], iq1s_grid[qs[3] | ((qh[1] << 4) & 0x700)]});
+                    value.val[0] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[qs[0] | ((qh[0] << 8) & 0x700)], iq1s_grid[qs[1] | ((qh[0] << 4) & 0x700)]}));
+                    value.val[1] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[qs[2] | ((qh[1] << 8) & 0x700)], iq1s_grid[qs[3] | ((qh[1] << 4) & 0x700)]}));
                     value.val[0] = vshlq_n_s8(vaddq_s8(value.val[0], vdupq_n_s8(1)), 3);
                     value.val[1] = vshlq_n_s8(vaddq_s8(value.val[1], vdupq_n_s8(1)), 3);
 

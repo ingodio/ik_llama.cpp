@@ -67,14 +67,16 @@ inline float32x4_t v_sigmoid(float32x4_t x) {
     return vdivq_f32(one, one_plus_exp_neg_x);
 }
 #endif
-#ifdef __AVX2__
+#ifdef __AVX__
 inline __m256 v_sigmoid(__m256 x) {
     const __m256 one = _mm256_set1_ps(1);
     const __m256 zero  = _mm256_setzero_ps();
     const __m256 neg_x = _mm256_sub_ps(zero, x);
     const __m256 exp_neg_x = v_expf(neg_x);
-    const __m256 one_plus_exp_neg_x = _mm256_add_ps(one, exp_neg_x);
-    return _mm256_div_ps(one, one_plus_exp_neg_x);
+    const __m256 den = _mm256_add_ps(one, exp_neg_x);
+    __m256 recip = _mm256_rcp_ps(den);
+    recip = _mm256_mul_ps(recip,_mm256_sub_ps(_mm256_set1_ps(2.0f),_mm256_mul_ps(den, recip)));
+    return recip;
 }
 #endif
 #if defined __AVX512F__ && defined __AVX512DQ__
@@ -96,7 +98,7 @@ inline void biased_sigmoid(int n, const float * x, const float * bias, float * y
         _mm512_storeu_ps(z + i, v);
     }
 #endif
-#if defined __AVX2__ && defined __FMA__
+#if defined __AVX__
     for (; i + 7 < n; i += 8) {
         auto v = v_sigmoid(_mm256_loadu_ps(x + i));
         _mm256_storeu_ps(y + i, _mm256_add_ps(v, _mm256_loadu_ps(bias + i)));
@@ -123,7 +125,7 @@ inline void biased_sigmoid(int n, const float * x, const float * bias, float * y
         _mm512_storeu_ps(y + i, _mm512_add_ps(v, _mm512_loadu_ps(bias + i)));
     }
 #endif
-#if defined __AVX2__ && defined __FMA__
+#if defined __AVX__
     for (; i + 7 < n; i += 8) {
         auto v = v_sigmoid(_mm256_loadu_ps(x + i));
         _mm256_storeu_ps(y + i, _mm256_add_ps(v, _mm256_loadu_ps(bias + i)));
@@ -601,7 +603,7 @@ void iqk_hadamard(struct ggml_tensor * dst, int ith, int nth) {
 namespace {
 float iqk_exp_with_thresh_impl(int n, float * logits, float max, float min) {
     float sum = 0;
-#ifdef __AVX2__
+#ifdef __AVX__
     auto vmax = _mm256_set1_ps(max);
     auto vmin = _mm256_set1_ps(min);
     auto vsum = _mm256_setzero_ps();
@@ -644,11 +646,11 @@ float iqk_exp_with_thresh(int n, float * logits, float max, float min) {
     //return result[0] + result[1];
 }
 
-bool iqk_ssm_conv4(int nr, int nc, int nt,
-        uint64_t nb01, uint64_t nb10, uint64_t nb11, uint64_t nb21,
-        const float * x0_in, const float * s0_in, const float * c_in,
-        float * dst, float * dst_silu, int ith, int nth) {
-#if defined __AVX2__
+bool iqk_ssm_conv4([[maybe_unused]] int nr, [[maybe_unused]] int nc, [[maybe_unused]] int nt,
+        [[maybe_unused]] uint64_t nb01, [[maybe_unused]] uint64_t nb10, [[maybe_unused]] uint64_t nb11, [[maybe_unused]] uint64_t nb21,
+        [[maybe_unused]] const float * x0_in, [[maybe_unused]] const float * s0_in, [[maybe_unused]] const float * c_in,
+        [[maybe_unused]] float * dst, [[maybe_unused]] float * dst_silu, [[maybe_unused]] int ith, [[maybe_unused]] int nth) {
+#if defined __AVX__
     if (nt <= 32 || nc != 4 || nr%16 != 0) {
         return false;
     }
@@ -691,8 +693,13 @@ bool iqk_ssm_conv4(int nr, int nc, int nt,
             __m256 sum2 = _mm256_setzero_ps();
             for (int k = 0; k < 4; ++k) {
                 int ii = (idx + k) & 3;
+#ifdef __FMA__
                 sum1 = _mm256_fmadd_ps(vs[ii+0], vc[k+0], sum1);
                 sum2 = _mm256_fmadd_ps(vs[ii+4], vc[k+4], sum2);
+#else
+    sum1 = _mm256_add_ps(_mm256_mul_ps(vs[ii+0], vc[k+0]), sum1);
+    sum2 = _mm256_add_ps(_mm256_mul_ps(vs[ii+4], vc[k+4]), sum2);
+#endif
             }
 #if defined __AVX512F__ && defined __AVX512DQ__
             if (dst_silu) {
