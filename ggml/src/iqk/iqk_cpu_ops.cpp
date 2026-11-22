@@ -657,7 +657,7 @@ bool iqk_ssm_conv4([[maybe_unused]] int nr, [[maybe_unused]] int nc, [[maybe_unu
         [[maybe_unused]] uint64_t nb01, [[maybe_unused]] uint64_t nb10, [[maybe_unused]] uint64_t nb11, [[maybe_unused]] uint64_t nb21,
         [[maybe_unused]] const float * x0_in, [[maybe_unused]] const float * s0_in, [[maybe_unused]] const float * c_in,
         [[maybe_unused]] float * dst, [[maybe_unused]] float * dst_silu, [[maybe_unused]] int ith, [[maybe_unused]] int nth) {
-#if defined __AVX2__
+#if defined __AVX__
     if (nt <= 32 || nc != 4 || nr%16 != 0) {
         return false;
     }
@@ -700,8 +700,13 @@ bool iqk_ssm_conv4([[maybe_unused]] int nr, [[maybe_unused]] int nc, [[maybe_unu
             __m256 sum2 = _mm256_setzero_ps();
             for (int k = 0; k < 4; ++k) {
                 int ii = (idx + k) & 3;
+#ifdef __FMA__
                 sum1 = _mm256_fmadd_ps(vs[ii+0], vc[k+0], sum1);
                 sum2 = _mm256_fmadd_ps(vs[ii+4], vc[k+4], sum2);
+#else
+    sum1 = _mm256_add_ps(_mm256_mul_ps(vs[ii+0], vc[k+0]), sum1);
+    sum2 = _mm256_add_ps(_mm256_mul_ps(vs[ii+4], vc[k+4]), sum2);
+#endif
             }
 #if defined __AVX512F__ && defined __AVX512DQ__
             if (dst_silu) {
