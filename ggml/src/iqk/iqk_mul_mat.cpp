@@ -1410,20 +1410,6 @@ void MulMat::relu(int n, const float * x, float * y) {
     for (int j = 0; j < n; ++j) y[j] = x[j] > 0 ? x[j] : 0;
 }
 #endif
-#if defined(__AVX2__) && defined(__FMA__)
-
-void MulMat::gelu(int n, const float * x, float * y) {
-    constexpr float GELU_COEF_A = 0.044715f;
-    constexpr float SQRT_2_OVER_PI  = 0.79788456080286535587989211986876f;
-    //GGML_ASSERT(n%8 == 0);
-    int i = 0;
-#if defined __AVX512F__ && defined __AVX512DQ__
-    {
-        __m512 c1 = _mm512_set1_ps(GELU_COEF_A);
-        __m512 c2 = _mm512_set1_ps(2.f*SQRT_2_OVER_PI);
-        for (; i + 15 < n; i += 16) _mm512_storeu_ps(y + i, v_gelu(_mm512_loadu_ps(x + i), c1, c2));
-    }
-#endif
 #if defined __AVX2__ && defined __FMA__
     if (i + 7 < n) {
         __m256 c1 = _mm256_set1_ps(GELU_COEF_A);
@@ -1539,9 +1525,58 @@ void MulMat::silu(int n, const float *x, float *y) {
         y[i] = v / (1.0f + expf(-v));
     }
 }
+
 void MulMat::relu(int n, const float * x, float * y) {
     for (int j = 0; j < n; ++j) y[j] = x[j] > 0 ? x[j] : 0;
 }
+void MulMat::situ(int n, const float * x, float * y, float beta) {
+    int i = 0;
+    const float inv_beta = 1.0f/beta;
+#if defined __AVX512F__ && defined __AVX512DQ__
+    for (; i + 15 < n; i += 16) _mm512_storeu_ps(y + i, v_situ(_mm512_loadu_ps(x + i), beta));
+#endif
+#if defined __AVX__
+    for (; i + 7 < n; i += 8) _mm256_storeu_ps(y + i, v_situ(_mm256_loadu_ps(x + i), beta));
+#endif
+    for (; i < n; ++i) y[i] = beta*tanhf(x[i]*inv_beta)/(1.0f + expf(-x[i]));
+}
+void MulMat::situ_up(int n, const float * x, float * y, float beta) {
+    if (beta <= 0.0f) {
+        if (x != y) memcpy(y, x, n*sizeof(float));
+        return;
+    }
+    int i = 0;
+    const float inv_beta = 1.0f/beta;
+#if defined __AVX512F__ && defined __AVX512DQ__
+    for (; i + 15 < n; i += 16) _mm512_storeu_ps(y + i, v_situ_up(_mm512_loadu_ps(x + i), beta));
+#endif
+#if defined __AVX__
+    for (; i + 7 < n; i += 8) _mm256_storeu_ps(y + i, v_situ_up(_mm256_loadu_ps(x + i), beta));
+#endif
+    for (; i < n; ++i) y[i] = beta*tanhf(x[i]*inv_beta);
+}
+#endif //AVX
+#if defined(__AVX2__) && defined(__FMA__)
+
+void MulMat::gelu(int n, const float * x, float * y) {
+    constexpr float GELU_COEF_A = 0.044715f;
+    constexpr float SQRT_2_OVER_PI  = 0.79788456080286535587989211986876f;
+    //GGML_ASSERT(n%8 == 0);
+    int i = 0;
+#if defined __AVX512F__ && defined __AVX512DQ__
+    {
+        __m512 c1 = _mm512_set1_ps(GELU_COEF_A);
+        __m512 c2 = _mm512_set1_ps(2.f*SQRT_2_OVER_PI);
+        for (; i + 15 < n; i += 16) _mm512_storeu_ps(y + i, v_gelu(_mm512_loadu_ps(x + i), c1, c2));
+    }
+#endif
+#if defined __AVX2__ && defined __FMA__
+    if (i + 7 < n) {
+        __m256 c1 = _mm256_set1_ps(GELU_COEF_A);
+        __m256 c2 = _mm256_set1_ps(2.f*SQRT_2_OVER_PI);
+        for (; i + 7 < n; i += 8) _mm256_storeu_ps(y + i, v_gelu(_mm256_loadu_ps(x + i), c1, c2));
+
+    }
 #endif
     for (; i < n; ++i) y[i] = 0.5f*x[i]*(1.0f + tanhf(SQRT_2_OVER_PI*x[i]*(1.0f + GELU_COEF_A*x[i]*x[i])));
 }
@@ -1582,7 +1617,7 @@ void MulMat::silu(int n, const float * x, float * y) {
 #if defined __AVX512F__ && defined __AVX512DQ__
     for (; i + 15 < n; i += 16) _mm512_storeu_ps(y + i, v_silu(_mm512_loadu_ps(x + i)));
 #endif
-#if defined __AVX2__ && defined __FMA__
+#if defined __AVX__
     for (; i + 7 < n; i += 8) _mm256_storeu_ps(y + i, v_silu(_mm256_loadu_ps(x + i)));
 #endif
     for (; i < n; ++i) y[i] = x[i]/(1.0f + expf(-x[i]));
@@ -1593,7 +1628,7 @@ void MulMat::situ(int n, const float * x, float * y, float beta) {
 #if defined __AVX512F__ && defined __AVX512DQ__
     for (; i + 15 < n; i += 16) _mm512_storeu_ps(y + i, v_situ(_mm512_loadu_ps(x + i), beta));
 #endif
-#if defined __AVX2__ && defined __FMA__
+#if defined __AVX__
     for (; i + 7 < n; i += 8) _mm256_storeu_ps(y + i, v_situ(_mm256_loadu_ps(x + i), beta));
 #endif
     for (; i < n; ++i) y[i] = beta*tanhf(x[i]*inv_beta)/(1.0f + expf(-x[i]));
@@ -1608,7 +1643,7 @@ void MulMat::situ_up(int n, const float * x, float * y, float beta) {
 #if defined __AVX512F__ && defined __AVX512DQ__
     for (; i + 15 < n; i += 16) _mm512_storeu_ps(y + i, v_situ_up(_mm512_loadu_ps(x + i), beta));
 #endif
-#if defined __AVX2__ && defined __FMA__
+#if defined __AVX__
     for (; i + 7 < n; i += 8) _mm256_storeu_ps(y + i, v_situ_up(_mm256_loadu_ps(x + i), beta));
 #endif
     for (; i < n; ++i) y[i] = beta*tanhf(x[i]*inv_beta);
@@ -1993,7 +2028,7 @@ void iqk_fused_delta_net_impl(int n_heads, int gqa_ratio, int repeat_type, int n
     const int h_start = ith * heads_per_thread;
     const int h_end = (h_start + heads_per_thread < total_heads) ? h_start + heads_per_thread : total_heads;
 
-#ifdef __AVX2__
+#ifdef __AVX__
     static_assert(head_dim % 8 == 0);
 #endif
 
@@ -2045,7 +2080,7 @@ void iqk_fused_delta_net_impl(int n_heads, int gqa_ratio, int repeat_type, int n
             for (int i = 0; i < head_dim; i += 8) {
                 auto vq = _mm256_loadu_ps(q_t + i);
                 auto vk = _mm256_loadu_ps(k_t + i);
-                vqksum = _mm256_fmadd_ps(vk, vq, vqksum);
+                vqksum = FMADD_PS(vk, vq, vqksum);
             }
             kq_sum = hsum_float_8(vqksum);
 #else
@@ -2631,7 +2666,7 @@ bool iqk_indexer_topk(struct ggml_tensor * dst, void * work_buffer, barrier_t ba
             auto this_q = (const char *)q->data + iq*q->nb[2];
             auto this_w = (const float *)((const char *)w->data + w->nb[1]*iq);
             bool done = false;
-#ifdef __AVX2__
+#ifdef __AVX__
             if (k_type == GGML_TYPE_F16 && q->type == GGML_TYPE_F32 && k->ne[1] % 32 == 0 && q->ne[1] % 8 == 0) {
                 auto k_repacked = (float *)(sorted + n_kv);
                 auto kq_local = k_repacked + 32*k->ne[0];
@@ -2659,7 +2694,7 @@ bool iqk_indexer_topk(struct ggml_tensor * dst, void * work_buffer, barrier_t ba
                         auto vw = _mm256_set1_ps(this_w[i]);
                         for (int k = 0; k < 4; ++k) {
                             auto relu = _mm256_max_ps(_mm256_setzero_ps(), _mm256_loadu_ps(kq_i + 8*k));
-                            acc[k] = _mm256_fmadd_ps(vw, relu, acc[k]);
+                            acc[k] = FMADD_PS(vw, relu, acc[k]);
                         }
                         kq_i += 32;
                     }
