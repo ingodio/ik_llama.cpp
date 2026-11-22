@@ -3235,7 +3235,7 @@ void mul_mat_iq1_s_r4_q8_1_1(int n, const void * vx, size_t bx, const DataInfo& 
                 auto signs = vreinterpret_s16_u16(vorr_u16(vceq_u16(vand_u16(sas, ms), ms), vdup_n_u16(1)));
                 isum[k+4] = vmull_s16(signs, scales4);
                 qx[0] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[x[4*ib+k].qs[ 0] | ((x[4*ib+k].qh[0] << 8) & 0x0700)],
-                                                        iq1s_grid[x[4*ib+k].qs[ 4] | ((x[4*ib+k].qh[0] << 5) & 0x0700)]}))
+                                                        iq1s_grid[x[4*ib+k].qs[ 4] | ((x[4*ib+k].qh[0] << 5) & 0x0700)]}));
                 qx[1] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[x[4*ib+k].qs[ 8] | ((x[4*ib+k].qh[0] << 2) & 0x0700)],
                                                         iq1s_grid[x[4*ib+k].qs[12] | ((x[4*ib+k].qh[0] >> 1) & 0x0700)]}));
                 qx[2] = vreinterpretq_s8_u64((uint64x2_t{iq1s_grid[x[4*ib+k].qs[ 1] | ((x[4*ib+k].qh[1] << 8) & 0x0700)],
@@ -3367,14 +3367,14 @@ void mul_mat_iq1_m_q8_K(int n, const void * vx, size_t bx, const DataInfo& info,
             scales.val[2] = vmovl_s16(vget_low_s16 (sc16.val[1]));
             scales.val[3] = vmovl_s16(vget_high_s16(sc16.val[1]));
             for (int ib64 = 0; ib64 < QK_K/64; ++ib64) {
-                qx[2*ib64+0] = {vreinterpretq_s8_u64((uint64x2_t{iq1s_grid_us[qs[0] | (((uint16_t)qh[0] << 8) & 0x700)],
-                                                                iq1s_grid_us[qs[1] | (((uint16_t)qh[0] << 4) & 0x700)]}),
-                                vreinterpretq_s8_u64((uint64x2_t{iq1s_grid_us[qs[2] | (((uint16_t)qh[1] << 8) & 0x700)],
-                                                                iq1s_grid_us[qs[3] | (((uint16_t)qh[1] << 4) & 0x700)]}))};
-                qx[2*ib64+1] = {vreinterpretq_s8_u64((uint64x2_t{iq1s_grid_us[qs[4] | (((uint16_t)qh[2] << 8) & 0x700)],
-                                                                iq1s_grid_us[qs[5] | (((uint16_t)qh[2] << 4) & 0x700)]})),
-                                vreinterpretq_s8_u64((uint64x2_t{iq1s_grid_us[qs[6] | (((uint16_t)qh[3] << 8) & 0x700)],
-                                                                iq1s_grid_us[qs[7] | (((uint16_t)qh[3] << 4) & 0x700)]}))};
+                qx[2 * ib64] = {vreinterpretq_s8_u64((uint64x2_t{iq1s_grid_us[qs[0] | (((uint16_t) qh[0] << 8) & 0x700)],
+                                                                 iq1s_grid_us[qs[1] | (((uint16_t) qh[0] << 4) & 0x700)]})),
+                                vreinterpretq_s8_u64((uint64x2_t{iq1s_grid_us[qs[2] | (((uint16_t) qh[1] << 8) & 0x700)],
+                                                                 iq1s_grid_us[qs[3] | (((uint16_t) qh[1] << 4) & 0x700)]}))};
+                qx[2 * ib64] = {vreinterpretq_s8_u64((uint64x2_t{iq1s_grid_us[qs[4] | (((uint16_t) qh[0] << 8) & 0x700)],
+                                                                 iq1s_grid_us[qs[5] | (((uint16_t) qh[0] << 4) & 0x700)]})),
+                                vreinterpretq_s8_u64((uint64x2_t{iq1s_grid_us[qs[6] | (((uint16_t) qh[1] << 8) & 0x700)],
+                                                                 iq1s_grid_us[qs[7] | (((uint16_t) qh[1] << 4) & 0x700)]}))};
                 auto qh16 = (const uint16_t *)qh;
                 auto h1 = vdupq_n_u64(qh16[0]);
                 auto h2 = vdupq_n_u64(qh16[1]);
