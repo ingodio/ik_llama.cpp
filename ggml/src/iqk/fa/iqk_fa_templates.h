@@ -142,16 +142,17 @@ static inline __m256 FMADD_PS(__m256 a, __m256 b, __m256 c) {
     static inline Data zero() {
         return _mm256_setzero_ps();
     }
+#ifdefined(__F16C__)
+    static inline Data load(const char * ptr, int i) {return _mm256_cvtph_ps(_mm_loadu_si128((const __m128i *)ptr + i)); }
+#else
     static inline Data load(const char * ptr, int i) {
         __m128i h = _mm_loadu_si128((const __m128i *)ptr + i);
-        // Use scalar conversion if F16C is unavailable
         alignas(32) float tmp[8];
         const uint16_t * src = (const uint16_t *) &h;
-        for (int j = 0; j < 8; ++j) {
-            tmp[j] = GGML_FP16_TO_FP32(src[j]);
-        }
+        for (int j = 0; j < 8; ++j) {tmp[j] = GGML_FP16_TO_FP32(src[j]);}
         return _mm256_load_ps(tmp);
     }
+#endif
     static inline Data set1(float val) {
         return _mm256_set1_ps(val);
     }
