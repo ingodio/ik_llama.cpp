@@ -2383,12 +2383,10 @@ inline bool iqk_flash_helper_T(ggml_type type_k, ggml_type type_v,
 
     bool result = false;
     switch (type_k) {
-#if !defined __F16C__
         case GGML_TYPE_F16: {
             HelperF16 kh(k, stride_k);
             result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
         } break;
-#endif
         case GGML_TYPE_Q8_0: {
             HelperQ80 kh(k, stride_k);
             result = iqk_flash_helper_T<Dk, Dv, k_step>(kh, type_v, nq1, nk1, stride_q, stride_v, stride_m, stride_qkv, q, v, mask, scale, softcap, qkv, sinkf, sink_stride, M, S);
