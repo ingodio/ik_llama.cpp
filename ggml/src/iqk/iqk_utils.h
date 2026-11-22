@@ -416,6 +416,15 @@ static inline __m256 v_tanh(__m256 x)
                       _mm256_min_ps(y, one));
     return y;
 }
+static inline __m256 v_silu(__m256 x) {
+    const __m256 one = _mm256_set1_ps(1.0f);
+    const __m256 zero = _mm256_setzero_ps();
+    const __m256 neg_x = _mm256_sub_ps(zero, x);
+    const __m256 exp_neg_x = v_expf(neg_x);
+    const __m256 one_plus_exp_neg_x = _mm256_add_ps(one, exp_neg_x);
+    const __m256 reciprocal = _mm256_rcp_ps(one_plus_exp_neg_x);
+    return _mm256_mul_ps(x, reciprocal);
+}
 static inline __m256 v_situ(__m256 x, float beta) {
     const __m256 b = _mm256_set1_ps(beta);
     const __m256 inv_b = _mm256_set1_ps(1.0f/beta);
