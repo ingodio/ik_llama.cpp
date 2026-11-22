@@ -375,6 +375,32 @@ struct Scales8KBase {
 };
 #endif
 #ifdef __AVX2__
+template <typename Block, bool per_row_scale = false, bool is_f16 = false>
+struct BaseDequantizer {
+    BaseDequantizer(const void * vx, size_t bx) : vx(vx), bx(bx) {}
+    inline void new_row(int ix) {
+        if constexpr (per_row_scale) {
+            if constexpr (is_f16) {
+                const ggml_half * dptr = (const ggml_half *)((const char *)vx + bx*ix);
+                d = GGML_FP16_TO_FP32(*dptr);
+                x = (const Block *)(dptr + 1);
+            } else {
+                const float * dptr = (const float *)((const char *)vx + bx*ix);
+                d = *dptr;
+                x = (const Block *)(dptr + 1);
+            }
+        } else {
+            x = (const Block *)((const char *)vx + bx*ix);
+        }
+    }
+
+    const void *  vx;
+    const size_t  bx;
+    const Block * x;
+
+    float d;
+};
+
 template <typename Q8, typename Bits>
 static inline void multiply_add(const Bits& bits, const __m256i * scales, int j, int i, const Q8& q8, __m256i * sumi) {
     if (j == 0) {
