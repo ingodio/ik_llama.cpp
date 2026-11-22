@@ -8556,11 +8556,6 @@ static void repack_q8_KV(int nrows, int n_per_row, const char * cx, char * cy, [
             vst1q_s8_x2(qy + 32 + 128*ib, m1);
             vst1q_s8_x2(qy + 64 + 128*ib, m2);
             vst1q_s8_x2(qy + 96 + 128*ib, m3);
-#else
-                for (int k = 0; k < 8; ++k) {
-                    for (int i = 0; i < 4; ++i) {
-                        qy[128*ib + 32*l + 4*k + i] = x8[k][16*ib + 4*l + i];
-                    }
 #endif
 
         }

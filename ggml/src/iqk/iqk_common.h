@@ -375,6 +375,32 @@ struct Scales8KBase {
 };
 #endif
 #ifdef __AVX2__
+template <typename Block, bool per_row_scale = false, bool is_f16 = false>
+struct BaseDequantizer {
+    BaseDequantizer(const void * vx, size_t bx) : vx(vx), bx(bx) {}
+    inline void new_row(int ix) {
+        if constexpr (per_row_scale) {
+            if constexpr (is_f16) {
+                const ggml_half * dptr = (const ggml_half *)((const char *)vx + bx*ix);
+                d = GGML_FP16_TO_FP32(*dptr);
+                x = (const Block *)(dptr + 1);
+            } else {
+                const float * dptr = (const float *)((const char *)vx + bx*ix);
+                d = *dptr;
+                x = (const Block *)(dptr + 1);
+            }
+        } else {
+            x = (const Block *)((const char *)vx + bx*ix);
+        }
+    }
+
+    const void *  vx;
+    const size_t  bx;
+    const Block * x;
+
+    float d;
+};
+
 template <typename Q8, typename Bits>
 static inline void multiply_add(const Bits& bits, const __m256i * scales, int j, int i, const Q8& q8, __m256i * sumi) {
     if (j == 0) {
@@ -779,16 +805,18 @@ template <int scale_block> struct Q8KRowRepacker<16, scale_block> {
 #ifdef __AVX__ // avx with neon
 #define __aarch64__
 #define SIMDE_ENABLE_NATIVE_ALIASES
-#include "simde/arm/neon.h"
-
+#define USE_SSE4
+//#include "simde/arm/neon.h"
 #define ggml_vdotq_s32(a, b, c) vdotq_s32(a, b, c)
 #define vdotq_laneq_s32(acc, a, b, lane) \
     vdotq_laneq_s32_impl<lane>(acc, a, b)
+//int32x4_t
 template<int Lane>
-static inline int32x4_t vdotq_laneq_s32_impl(
-    int32x4_t acc,
-    int8x16_t a,
-    int8x16_t b)
+static inline __m128i vdotq_laneq_s32_impl(
+__m128i acc, __m128i a, __m128i b)
+//    int32x4_t acc,
+//    int8x16_t a,
+//    int8x16_t b)
 {
     static_assert(Lane >= 0 && Lane < 4, "Invalid lane");
     const __m128i zero = _mm_setzero_si128();
@@ -805,6 +833,7 @@ static inline int32x4_t vdotq_laneq_s32_impl(
     const __m128i dot = _mm_hadd_epi32(lo, hi);
     return _mm_add_epi32(acc, dot);
 }
+#include "NEON_2_SSE.h"
 #endif
 
 template <int nrc, typename block_q8 = block_q8_K> struct Q8 {

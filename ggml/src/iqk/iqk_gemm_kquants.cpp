@@ -3722,8 +3722,8 @@ void mul_mat_q2_k_r4_q8_k(int n, const void * vx, size_t bx, const DataInfo& inf
         const block_q2_k_r4 * iq2 = (const block_q2_k_r4 *)((const char *)vx + ix*bx);
         for (int ibl = 0; ibl < nbl; ++ibl) {
             int32x4_t isum[nrc_y] = {};
-            auto d4 = vcvt_f32_f16(vld1_f16((const float16_t *)iq2[ibl].d));
-            auto m4 = vmulq_f32(vdupq_n_f32(-1.f), vcvt_f32_f16(vld1_f16((const float16_t *)iq2[ibl].d+4)));
+            auto d4 = vcvt_f32_f16(vld1_f16((const __fp16 *)iq2[ibl].d));
+            auto m4 = vmulq_f32(vdupq_n_f32(-1.f), vcvt_f32_f16(vld1_f16((const __fp16 *)iq2[ibl].d+4)));
             for (int is = 0; is < 2; ++is) {
                 auto sl = vld1q_u8_x2(iq2[ibl].scales + 32*is);
                 auto m = vshrq_n_u8(sl.val[0], 4);
@@ -3808,7 +3808,7 @@ void mul_mat_q3_k_r4_q8_k(int n, const void * vx, size_t bx, const DataInfo& inf
         const block_q3_k_r4 * iq3 = (const block_q3_k_r4 *)((const char *)vx + ix*bx);
         for (int ibl = 0; ibl < nbl; ++ibl) {
             int32x4_t isum[nrc_y] = {};
-            auto d4 = vcvt_f32_f16(vld1_f16((const float16_t *)iq3[ibl].d));
+            auto d4 = vcvt_f32_f16(vld1_f16((const __fp16 *)iq3[ibl].d));
             auto sl = vld1q_u8_x2(iq3[ibl].scales_l);
             auto sh = vld1q_u8(iq3[ibl].scales_h);
             i8scales.val[0] = vaddq_s8(m32, vorrq_u8(vandq_u8(sl.val[0],  mf), vandq_u8(vshlq_n_u8(sh, 4), m30)));
@@ -3871,8 +3871,8 @@ void mul_mat_q4_k_r4_q8_k(int n, const void * vx, size_t bx, const DataInfo& inf
     for (int ix = 0; ix < nrc_x; ix += 4) {
         const block_q4_k_r4 * iq4 = (const block_q4_k_r4 *)((const char *)vx + ix*bx);
         for (int ibl = 0; ibl < nbl; ++ibl) {
-            auto d4 = vcvt_f32_f16(vld1_f16((const float16_t *)iq4[ibl].d));
-            auto m4 = vcvt_f32_f16(vld1_f16((const float16_t *)iq4[ibl].d+4));
+            auto d4 = vcvt_f32_f16(vld1_f16((const __fp16 *)iq4[ibl].d));
+            auto m4 = vcvt_f32_f16(vld1_f16((const __fp16 *)iq4[ibl].d+4));
             m4 = vmulq_f32(m4, vdupq_n_f32(-1.f));
             auto sl = vld1q_u8_x2(iq4[ibl].scales_l);
             auto sh = vld1q_u8(iq4[ibl].scales_h);
@@ -3940,8 +3940,8 @@ void mul_mat_q5_k_r4_q8_k(int n, const void * vx, size_t bx, const DataInfo& inf
     for (int ix = 0; ix < nrc_x; ix += 4) {
         const block_q5_k_r4 * iq5 = (const block_q5_k_r4 *)((const char *)vx + ix*bx);
         for (int ibl = 0; ibl < nbl; ++ibl) {
-            auto d4 = vcvt_f32_f16(vld1_f16((const float16_t *)iq5[ibl].d));
-            auto m4 = vcvt_f32_f16(vld1_f16((const float16_t *)iq5[ibl].d+4));
+            auto d4 = vcvt_f32_f16(vld1_f16((const __fp16 *)iq5[ibl].d));
+            auto m4 = vcvt_f32_f16(vld1_f16((const __fp16 *)iq5[ibl].d+4));
             m4 = vmulq_f32(m4, vdupq_n_f32(-1.f));
             auto sl = vld1q_u8_x2(iq5[ibl].scales_l);
             auto sh = vld1q_u8(iq5[ibl].scales_h);
@@ -4017,7 +4017,7 @@ void mul_mat_q6_k_r4_q8_k(int n, const void * vx, size_t bx, const DataInfo& inf
     for (int ix = 0; ix < nrc_x; ix += 4) {
         const block_q6_k_r4 * iq6 = (const block_q6_k_r4 *)((const char *)vx + ix*bx);
         for (int ibl = 0; ibl < nbl; ++ibl) {
-            auto d4 = vcvt_f32_f16(vld1_f16((const float16_t *)iq6[ibl].d));
+            auto d4 = vcvt_f32_f16(vld1_f16((const __fp16 *)iq6[ibl].d));
             int32x4_t isum[nrc_y] = {};
             for (int is = 0; is < 2; ++is) {
                 for (int ib = 0; ib < 4; ++ib) {
@@ -4067,8 +4067,8 @@ void mul_mat_q8_k_r8_q8_k(int n, const void * vx, size_t bx, const DataInfo& inf
     for (int ix = 0; ix < nrc_x; ix += 8) {
         const block_q8_k_r8 * iq8 = (const block_q8_k_r8 *)((const char *)vx + ix*bx);
         for (int ibl = 0; ibl < nbl; ++ibl) {
-            auto d4l = vcvt_f32_f16(vld1_f16((const float16_t *)iq8[ibl].d+0));
-            auto d4h = vcvt_f32_f16(vld1_f16((const float16_t *)iq8[ibl].d+4));
+            auto d4l = vcvt_f32_f16(vld1_f16((const __fp16 *)iq8[ibl].d+0));
+            auto d4h = vcvt_f32_f16(vld1_f16((const __fp16 *)iq8[ibl].d+4));
             int32x4_t isum[2*nrc_y] = {};
             for (int ib = 0; ib < QK_K/16; ++ib) {
                 auto q1 = vld1q_s8_x4(iq8[ibl].qs + 128*ib +  0);
@@ -4120,7 +4120,7 @@ void mul_mat_iq4_xs_r8_q8_k(int n, const void * vx, size_t bx, const DataInfo& i
     for (int ix = 0; ix < nrc_x; ix += 8) {
         const block_iq4_xs_r8 * iq4 = (const block_iq4_xs_r8 *)((const char *)vx + ix*bx);
         for (int ibl = 0; ibl < nbl; ++ibl) {
-            auto d4_f16 = vld1q_f16((const float16_t *)iq4[ibl].d);
+            auto d4_f16 = vld1q_f16((const __fp16 *)iq4[ibl].d);
             auto d4l = vcvt_f32_f16(vget_low_f16 (d4_f16));
             auto d4h = vcvt_f32_f16(vget_high_f16(d4_f16));
             auto sl = vld1q_u8_x2(iq4[ibl].scales_l);
@@ -4597,8 +4597,8 @@ void iqk_convert_q6_k_q8_0_r8(int n, const void * vx, size_t bx, void * vy, int 
                 }
             }
             for (int ib32 = 0; ib32 < 8; ++ib32) {
-                vst1_f16((float16_t *)y[ib32].d + 0, vcvt_f16_f32(vld1q_f32(all_s + 8*ib32 + 0)));
-                vst1_f16((float16_t *)y[ib32].d + 4, vcvt_f16_f32(vld1q_f32(all_s + 8*ib32 + 4)));
+                vst1_f16((__fp16 *)y[ib32].d + 0, vcvt_f16_f32(vld1q_f32(all_s + 8*ib32 + 0)));
+                vst1_f16((__fp16 *)y[ib32].d + 4, vcvt_f16_f32(vld1q_f32(all_s + 8*ib32 + 4)));
             }
             y += QK_K/32;
         }
@@ -4637,7 +4637,7 @@ static void mul_mat_q6_k_q8_0_x4(int n, const void * vx, size_t bx, const DataIn
                 y = vld1q_s8_x2(q8.y[iy][2*i+0].qs+96);
                 auto dot4 = vpaddq_s32(ggml_vdotq_s32(vdupq_n_s32(0), deq.bits.b2.val[2], y.val[0]), ggml_vdotq_s32(vdupq_n_s32(0), deq.bits.b2.val[3], y.val[1]));
                 auto dot34 = vpaddq_s32(dot3, dot4); // 4, 5, 6, 7
-                auto d8 = vcvt_f32_f16(vld1_f16((const float16_t *)q8.y[iy][2*i+0].d));
+                auto d8 = vcvt_f32_f16(vld1_f16((const __fp16 *)q8.y[iy][2*i+0].d));
                 auto d8_1 = vzip1q_f32(d8, d8);
                 auto d8_2 = vzip2q_f32(d8, d8);
                 acc[iy]   = vfmaq_f32(acc[iy], vmulq_f32(scales.val[0], d8_1), vcvtq_f32_s32(dot12));
@@ -4656,7 +4656,7 @@ static void mul_mat_q6_k_q8_0_x4(int n, const void * vx, size_t bx, const DataIn
                 y = vld1q_s8_x2(q8.y[iy][2*i+1].qs+96);
                 auto dot4 = vpaddq_s32(ggml_vdotq_s32(vdupq_n_s32(0), deq.bits.b2.val[2], y.val[0]), ggml_vdotq_s32(vdupq_n_s32(0), deq.bits.b2.val[3], y.val[1]));
                 auto dot34 = vpaddq_s32(dot3, dot4); // 4, 5, 6, 7
-                auto d8 = vcvt_f32_f16(vld1_f16((const float16_t *)q8.y[iy][2*i+1].d));
+                auto d8 = vcvt_f32_f16(vld1_f16((const __fp16 *)q8.y[iy][2*i+1].d));
                 auto d8_1 = vzip1q_f32(d8, d8);
                 auto d8_2 = vzip2q_f32(d8, d8);
                 acc[iy]   = vfmaq_f32(acc[iy], vmulq_f32(scales.val[2], d8_1), vcvtq_f32_s32(dot12));
@@ -4719,8 +4719,8 @@ void iqk_convert_q4_k_q8_1_r8(int n, const void * vx, size_t bx, void * vy, int 
                     }
                 }
             }
-            float32x4x2_t vd{ vcvt_f32_f16(vld1_f16((const float16_t *)dh+0)), vcvt_f32_f16(vld1_f16((const float16_t *)dh+ 4)) };
-            float32x4x2_t vm{ vcvt_f32_f16(vld1_f16((const float16_t *)dh+8)), vcvt_f32_f16(vld1_f16((const float16_t *)dh+12)) };
+            float32x4x2_t vd{ vcvt_f32_f16(vld1_f16((const __fp16 *)dh+0)), vcvt_f32_f16(vld1_f16((const __fp16 *)dh+ 4)) };
+            float32x4x2_t vm{ vcvt_f32_f16(vld1_f16((const __fp16 *)dh+8)), vcvt_f32_f16(vld1_f16((const __fp16 *)dh+12)) };
             vm.val[0] = vmulq_f32(vdupq_n_f32(-1.f), vm.val[0]);
             vm.val[1] = vmulq_f32(vdupq_n_f32(-1.f), vm.val[1]);
             for (int ib32 = 0; ib32 < QK_K/32; ++ib32) {
@@ -4728,15 +4728,15 @@ void iqk_convert_q4_k_q8_1_r8(int n, const void * vx, size_t bx, void * vy, int 
                 uint32x4x2_t iscales32 = { vmovl_u16(vget_low_u16(iscales16)), vmovl_u16(vget_high_u16(iscales16)) };
                 auto scales1 = vmulq_f32(vd.val[0], vcvtq_f32_u32(iscales32.val[0]));
                 auto scales2 = vmulq_f32(vd.val[1], vcvtq_f32_u32(iscales32.val[1]));
-                vst1_f16((float16_t *)y[ib32].d+0, vcvt_f16_f32(scales1));
-                vst1_f16((float16_t *)y[ib32].d+4, vcvt_f16_f32(scales2));
+                vst1_f16((__fp16 *)y[ib32].d+0, vcvt_f16_f32(scales1));
+                vst1_f16((__fp16 *)y[ib32].d+4, vcvt_f16_f32(scales2));
 
                 iscales16 = vld1q_u16(all_ls + 8*ib32 + 64);
                 iscales32 = { vmovl_u16(vget_low_u16(iscales16)), vmovl_u16(vget_high_u16(iscales16)) };
                 scales1 = vmulq_f32(vm.val[0], vcvtq_f32_u32(iscales32.val[0]));
                 scales2 = vmulq_f32(vm.val[1], vcvtq_f32_u32(iscales32.val[1]));
-                vst1_f16((float16_t *)y[ib32].d+ 8, vcvt_f16_f32(scales1));
-                vst1_f16((float16_t *)y[ib32].d+12, vcvt_f16_f32(scales2));
+                vst1_f16((__fp16 *)y[ib32].d+ 8, vcvt_f16_f32(scales1));
+                vst1_f16((__fp16 *)y[ib32].d+12, vcvt_f16_f32(scales2));
             }
             y += QK_K/32;
         }
@@ -4800,8 +4800,8 @@ void iqk_convert_q5_k_q8_1_r8(int n, const void * vx, size_t bx, void * vy, int 
                     hbits.val[1] = vshrq_n_u8(hbits.val[1], 2);
                 }
             }
-            float32x4x2_t vd{ vcvt_f32_f16(vld1_f16((const float16_t *)dh+0)), vcvt_f32_f16(vld1_f16((const float16_t *)dh+ 4)) };
-            float32x4x2_t vm{ vcvt_f32_f16(vld1_f16((const float16_t *)dh+8)), vcvt_f32_f16(vld1_f16((const float16_t *)dh+12)) };
+            float32x4x2_t vd{ vcvt_f32_f16(vld1_f16((const __fp16 *)dh+0)), vcvt_f32_f16(vld1_f16((const __fp16 *)dh+ 4)) };
+            float32x4x2_t vm{ vcvt_f32_f16(vld1_f16((const __fp16 *)dh+8)), vcvt_f32_f16(vld1_f16((const __fp16 *)dh+12)) };
             vm.val[0] = vmulq_f32(vdupq_n_f32(-1.f), vm.val[0]);
             vm.val[1] = vmulq_f32(vdupq_n_f32(-1.f), vm.val[1]);
             for (int ib32 = 0; ib32 < QK_K/32; ++ib32) {
@@ -4809,15 +4809,15 @@ void iqk_convert_q5_k_q8_1_r8(int n, const void * vx, size_t bx, void * vy, int 
                 uint32x4x2_t iscales32 = { vmovl_u16(vget_low_u16(iscales16)), vmovl_u16(vget_high_u16(iscales16)) };
                 auto scales1 = vmulq_f32(vd.val[0], vcvtq_f32_u32(iscales32.val[0]));
                 auto scales2 = vmulq_f32(vd.val[1], vcvtq_f32_u32(iscales32.val[1]));
-                vst1_f16((float16_t *)y[ib32].d+0, vcvt_f16_f32(scales1));
-                vst1_f16((float16_t *)y[ib32].d+4, vcvt_f16_f32(scales2));
+                vst1_f16((__fp16 *)y[ib32].d+0, vcvt_f16_f32(scales1));
+                vst1_f16((__fp16 *)y[ib32].d+4, vcvt_f16_f32(scales2));
 
                 iscales16 = vld1q_u16(all_ls + 8*ib32 + 64);
                 iscales32 = { vmovl_u16(vget_low_u16(iscales16)), vmovl_u16(vget_high_u16(iscales16)) };
                 scales1 = vmulq_f32(vm.val[0], vcvtq_f32_u32(iscales32.val[0]));
                 scales2 = vmulq_f32(vm.val[1], vcvtq_f32_u32(iscales32.val[1]));
-                vst1_f16((float16_t *)y[ib32].d+ 8, vcvt_f16_f32(scales1));
-                vst1_f16((float16_t *)y[ib32].d+12, vcvt_f16_f32(scales2));
+                vst1_f16((__fp16 *)y[ib32].d+ 8, vcvt_f16_f32(scales1));
+                vst1_f16((__fp16 *)y[ib32].d+12, vcvt_f16_f32(scales2));
             }
             y += QK_K/32;
         }
@@ -4845,8 +4845,8 @@ static void mul_mat_qX_k_q8_1_x4(int n, const void * vx, size_t bx, const DataIn
             auto scales = deq.new_block(i);
 
             for (int iy = 0; iy < nrc_y; ++iy) {
-                auto m1 = vcvt_f32_f16(vld1_f16((const float16_t *)q8.y[iy][2*i+0].d+4));
-                auto m2 = vcvt_f32_f16(vld1_f16((const float16_t *)q8.y[iy][2*i+1].d+4));
+                auto m1 = vcvt_f32_f16(vld1_f16((const __fp16 *)q8.y[iy][2*i+0].d+4));
+                auto m2 = vcvt_f32_f16(vld1_f16((const __fp16 *)q8.y[iy][2*i+1].d+4));
                 acc[iy] = vfmaq_f32(acc[iy], scales.val[2], m1);
                 acc[iy] = vfmaq_f32(acc[iy], scales.val[3], m2);
             }
@@ -4864,7 +4864,7 @@ static void mul_mat_qX_k_q8_1_x4(int n, const void * vx, size_t bx, const DataIn
                 auto dot4 = ggml_vdotq_s32(ggml_vdotq_s32(vdupq_n_s32(0), deq.bits.b2.val[2], y.val[0]), deq.bits.b2.val[3], y.val[1]);
                 auto dot34 = vpaddq_s32(dot3, dot4); // 2, 2, 3, 3
                 auto dot = vpaddq_s32(dot12, dot34); // 0, 1, 2, 3
-                auto d8 = vcvt_f32_f16(vld1_f16((const float16_t *)q8.y[iy][2*i+0].d));
+                auto d8 = vcvt_f32_f16(vld1_f16((const __fp16 *)q8.y[iy][2*i+0].d));
                 acc[iy] = vfmaq_f32(acc[iy], vmulq_f32(scales.val[0], d8), vcvtq_f32_s32(dot));
             }
 
@@ -4881,7 +4881,7 @@ static void mul_mat_qX_k_q8_1_x4(int n, const void * vx, size_t bx, const DataIn
                 auto dot4 = ggml_vdotq_s32(ggml_vdotq_s32(vdupq_n_s32(0), deq.bits.b2.val[2], y.val[0]), deq.bits.b2.val[3], y.val[1]);
                 auto dot34 = vpaddq_s32(dot3, dot4); // 2, 2, 3, 3
                 auto dot = vpaddq_s32(dot12, dot34); // 0, 1, 2, 3
-                auto d8 = vcvt_f32_f16(vld1_f16((const float16_t *)q8.y[iy][2*i+1].d));
+                auto d8 = vcvt_f32_f16(vld1_f16((const __fp16 *)q8.y[iy][2*i+1].d));
                 acc[iy] = vfmaq_f32(acc[iy], vmulq_f32(scales.val[1], d8), vcvtq_f32_s32(dot));
             }
         }
@@ -4970,8 +4970,8 @@ void iqk_convert_iq4_xs_q8_k_r8(int n, const void * vx, size_t bx, void * vy, in
                 }
                 dnew[k] = d * convert_to_q8_k_r8(1.f/127, xv, ls, block, (uint32_t *)y[i].qs + k);
             }
-            vst1_f16((float16_t *)y[i].d + 0, vcvt_f16_f32(vld1q_f32(dnew+0)));
-            vst1_f16((float16_t *)y[i].d + 4, vcvt_f16_f32(vld1q_f32(dnew+4)));
+            vst1_f16((__fp16 *)y[i].d + 0, vcvt_f16_f32(vld1q_f32(dnew+0)));
+            vst1_f16((__fp16 *)y[i].d + 4, vcvt_f16_f32(vld1q_f32(dnew+4)));
         }
         y += nb;
     }

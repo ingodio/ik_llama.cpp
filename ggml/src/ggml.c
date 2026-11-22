@@ -4190,10 +4190,12 @@ static inline __m256 ggml_v_tanh(__m256 x){
     const __m256 sign_mask = _mm256_set1_ps(-0.0f);
     const __m256 sign = _mm256_and_ps(x, sign_mask);
     const __m256 ax = _mm256_andnot_ps(sign_mask, x);
-    const __m256 e = ggml_v_expf(_mm256_mul_ps(_mm256_sub_ps( _mm256_setzero_ps(), two), ax));
+    const __m256 e = ggml_v_expf(_mm256_mul_ps(_mm256_sub_ps(_mm256_setzero_ps(), two), ax));
     const __m256 num = _mm256_sub_ps(one, e);
     const __m256 den = _mm256_add_ps(one, e);
-    const __m256 y = _mm256_mul_ps(num, _mm256_rcp_ps(den));
+    __m256 r = _mm256_rcp_ps(den);
+    r = _mm256_mul_ps(r, _mm256_sub_ps(_mm256_set1_ps(2.0f), _mm256_mul_ps(den, r)));
+    const __m256 y = _mm256_mul_ps(num, r);
     return _mm256_xor_ps(y, sign);
 }
 static inline __m256 ggml_v_softcap(__m256 x, float s_before, float s_after){
@@ -4254,8 +4256,10 @@ inline static void ggml_vec_sigmoid_mul_f32(int n, const float *x, const float *
         __m256 vy = _mm256_loadu_ps(y + i);
         __m256 e = ggml_v_expf(_mm256_sub_ps(zero, vx));
         __m256 d = _mm256_add_ps(one, e);
+        __m256 r = _mm256_rcp_ps(d);
+        r = _mm256_mul_ps(r, _mm256_sub_ps(_mm256_set1_ps(2.0f), _mm256_mul_ps(d, r)));
         _mm256_storeu_ps(z + i,
-            _mm256_mul_ps(vy, _mm256_rcp_ps(d)));
+            _mm256_mul_ps(vy, r));
     }
 
     for (; i < n; ++i)
@@ -4311,7 +4315,9 @@ static inline __m256 ggml_v_gelus(__m256 x)
     __m256 z = _mm256_mul_ps(x, k);
     __m256 e = ggml_v_expf(z);
     __m256 denom = _mm256_add_ps(one, e);
-    __m256 result = _mm256_mul_ps(x, _mm256_rcp_ps(denom));
+    __m256 r = _mm256_rcp_ps(denom);
+    r = _mm256_mul_ps(r, _mm256_sub_ps(_mm256_set1_ps(2.0f), _mm256_mul_ps(denom, r)));
+    __m256 result = _mm256_mul_ps(x, r);
     return result;
 }
 #elif defined(__SSE2__) // __AVX2__ / __ARM_NEON
