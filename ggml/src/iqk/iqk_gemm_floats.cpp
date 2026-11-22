@@ -8,7 +8,7 @@
 #define GGML_COMMON_IMPL_C
 #include "ggml-common.h"
 
-#ifdef __AVX2__
+#ifdef __AVX__
 
 namespace {
 
@@ -104,13 +104,27 @@ static inline __m256 FMADD_PS(__m256 a, __m256 b, __m256 c) {
     constexpr static int k_step = 8;
     using Data = __m256;
     using Acc  = __m256;
-    static inline Data load(const ggml_bf16_t * x) {
-        const __m128i v = _mm_loadu_si128((const __m128i *) x);
-        const __m128i zero = _mm_setzero_si128();
-        const __m128i lo = _mm_slli_epi32(_mm_unpacklo_epi16(v, zero), 16);
-        const __m128i hi = _mm_slli_epi32(_mm_unpackhi_epi16(v, zero), 16);
-        return _mm256_castsi256_ps(_mm256_insertf128_si256(_mm256_castsi128_si256(lo), hi, 1));
+    static inline Data load(const float * x) { return _mm256_loadu_ps(x); }
+    static inline __m128 hsum_r4(Acc acc) {
+        return _mm_add_ps(_mm256_castps256_ps128(acc), _mm256_extractf128_ps(acc, 1));
     }
+static inline Data load(const ggml_bf16_t *x) {
+    __m128i v = _mm_loadu_si128((const __m128i*)x);
+    // Convert first 4 BF16 values to FP32 bit representations
+    __m128i lo = _mm_slli_epi32(
+        _mm_cvtepu16_epi32(v), 16);
+    // Convert next 4 BF16 values
+    __m128i hi = _mm_slli_epi32(
+        _mm_cvtepu16_epi32(_mm_srli_si128(v, 8)), 16);
+    // Combine into a 256-bit vector
+    __m256 r = _mm256_castps128_ps256(_mm_castsi128_ps(lo));
+    return _mm256_insertf128_ps(
+        r, _mm_castsi128_ps(hi), 1);
+#ifdef __F16C__
+    static inline Data load(const ggml_half * x) { return _mm256_cvtph_ps(_mm_loadu_si128((const __m128i *)x)); }
+#else
+//TODO
+#endif
     static inline Acc acc(Acc prev, const __m256& y, const __m256& x) {return FMADD_PS(y, x, prev);}
     static inline Acc acc_r4(Acc acc, const Data * xv, const Data& yv) {
         acc = FMADD_PS(xv[0], _mm256_shuffle_ps(yv, yv, 0x00), acc);
@@ -118,6 +132,16 @@ static inline __m256 FMADD_PS(__m256 a, __m256 b, __m256 c) {
         acc = FMADD_PS(xv[2], _mm256_shuffle_ps(yv, yv, 0xaa), acc);
         acc = FMADD_PS(xv[3], _mm256_shuffle_ps(yv, yv, 0xff), acc);
         return acc;
+    }
+    template <typename Float>
+    static inline Data load4Floats(const Float * x) {
+        return _mm256_insertf128_ps(_mm256_setzero_ps(), load128(x), 0);
+    }
+    static inline Acc acc_first(const Data& y, const Data& x) {
+        return _mm256_mul_ps(y, x);
+    }
+    static inline float hsum(Acc acc) {
+        return hsum_float_8(acc);
     }
 #endif //AVX+
     static inline __m128 load128(const ggml_half * x) { return _mm_cvtph_ps(_mm_loadl_epi64((const __m128i *)x)); }
