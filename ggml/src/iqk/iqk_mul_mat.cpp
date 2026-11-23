@@ -2448,7 +2448,7 @@ void iqk_bucket_topk(int nval, int ntop, float * values, int * idx, int * idx_in
     }
     for (int j = 0; j < n_extra; ++j) idx[nhave + j] = idx_inf[j];
 }
-#ifdef __AVX2__
+#ifdef __AVX__
 inline void iqk_repack_f16(int nrows, int n_per_row, const char * k_in, size_t nb, float * k_out) {
     __m256 xv[4];
     for (int row = 0; row < nrows; row += 4) {
@@ -2483,10 +2483,10 @@ template <int nrc_y> inline void iqk_mul_f32_f32_r(int n_per_row, int n_rows, si
             x += 32;
             for (int iy = 0; iy < nrc_y; ++iy) {
                 auto vy = _mm256_loadu_ps(y[iy] + 8*ib);
-                acc[iy] = _mm256_fmadd_ps(vx[0], _mm256_shuffle_ps(vy, vy, 0x00), acc[iy]);
-                acc[iy] = _mm256_fmadd_ps(vx[1], _mm256_shuffle_ps(vy, vy, 0x55), acc[iy]);
-                acc[iy] = _mm256_fmadd_ps(vx[2], _mm256_shuffle_ps(vy, vy, 0xaa), acc[iy]);
-                acc[iy] = _mm256_fmadd_ps(vx[3], _mm256_shuffle_ps(vy, vy, 0xff), acc[iy]);
+                acc[iy] = FMADD_PS(vx[0], _mm256_shuffle_ps(vy, vy, 0x00), acc[iy]);
+                acc[iy] = FMADD_PS(vx[1], _mm256_shuffle_ps(vy, vy, 0x55), acc[iy]);
+                acc[iy] = FMADD_PS(vx[2], _mm256_shuffle_ps(vy, vy, 0xaa), acc[iy]);
+                acc[iy] = FMADD_PS(vx[3], _mm256_shuffle_ps(vy, vy, 0xff), acc[iy]);
             }
         }
         for (int iy = 0; iy < nrc_y; ++iy) {
@@ -2518,7 +2518,7 @@ size_t iqk_idx_topk_work_buffer_size(const struct ggml_tensor * dst, int nthread
         auto row_size_q = ggml_row_size(tt.vec_dot_type, q->ne[0]);
         size = row_size_q * q->ne[1] * q->ne[2];
     }
-#ifdef __aarch64__
+#ifdef __aarch64__ && __ARM_NEON
     else if (k->type == GGML_TYPE_F16 && q->type == GGML_TYPE_F32) {
         size = ggml_row_size(GGML_TYPE_F16, q->ne[0]) * q->ne[1] * q->ne[2];
     }
@@ -2613,7 +2613,7 @@ bool iqk_indexer_topk(struct ggml_tensor * dst, void * work_buffer, barrier_t ba
         quantize_size = row_size_q * q->ne[1];
         q_type = tt.vec_dot_type;
     }
-#ifdef __aarch64__
+#ifdef __aarch64__ && __ARM_NEON
     else if (k_type == GGML_TYPE_F16 && q_type == GGML_TYPE_F32) {
         // arm: iqk_set_kernels_float provides f16 x f16 but not f16 x f32; convert the q rows to f16
         auto ttq = ggml_internal_get_type_traits(GGML_TYPE_F16);
@@ -2666,7 +2666,7 @@ bool iqk_indexer_topk(struct ggml_tensor * dst, void * work_buffer, barrier_t ba
             auto this_q = (const char *)q->data + iq*q->nb[2];
             auto this_w = (const float *)((const char *)w->data + w->nb[1]*iq);
             bool done = false;
-#ifdef __AVX__
+#ifdef __AVV__ && __F16C__
             if (k_type == GGML_TYPE_F16 && q->type == GGML_TYPE_F32 && k->ne[1] % 32 == 0 && q->ne[1] % 8 == 0) {
                 auto k_repacked = (float *)(sorted + n_kv);
                 auto kq_local = k_repacked + 32*k->ne[0];
@@ -2722,7 +2722,7 @@ bool iqk_indexer_topk(struct ggml_tensor * dst, void * work_buffer, barrier_t ba
                 } else {
                     for (int i = 0; i < nk; ++i) this_score[i] = 0;
                 }
-#ifdef __AVX2__
+#ifdef __AVX__
                 if constexpr (k_indexer_chunks == 64) {
                     if (nk == k_indexer_chunks) {
                         __m256 acc[k_indexer_chunks/8];
@@ -2731,7 +2731,7 @@ bool iqk_indexer_topk(struct ggml_tensor * dst, void * work_buffer, barrier_t ba
                             auto wi = _mm256_set1_ps(this_w[i]);
                             for (int j = 0; j < k_indexer_chunks/8; ++j) {
                                 auto relu = _mm256_max_ps(_mm256_setzero_ps(), _mm256_loadu_ps(kq_i + 8*j));
-                                acc[j] = _mm256_fmadd_ps(wi, relu, acc[j]);
+                                acc[j] = FMADD_PS(wi, relu, acc[j]);
                             }
                             kq_i += k_indexer_chunks;
                         }
